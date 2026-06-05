@@ -136,6 +136,11 @@ scenes:
 - [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
 - [x] **PR3 Chunker + 示例小说** — ✅ 完成。`lib/agent/chunker.ts`(确定性分章/两遍分场景：分隔行+大空行+转场提示词) + `samples/honglou-meng-ch1-3.txt`(公有领域《红楼梦》前三回真实文本)；13 测试(含真实样本冒烟 + 锚定正则拒绝正文「第四回中…」回归)。
 - [ ] **PR4 StoryBible Curator** — ⏭️ 下一个（**大审查锚点**：覆盖 PR3+PR4）。跨章人物/地点/时间线抽取，aliases 合并，稳定 id；fixture 测试。
+
+> **待议决策（defer 到对应 PR，勿遗忘）**：
+> - **示例小说改用简体**（便于 demo 展示）。当前 `samples/honglou-meng-ch1-3.txt` 是繁體红楼梦；换简体样本时同步更新 chunker 的繁體 cue 冒烟测试（繁體 cue 支持可保留作健壮性）。—— 到 PR5 / demo 阶段定。
+> - **红楼梦不一定取前三回**作 demo；章节选择到对应 PR 再定。
+> - **LLM 配置缺口**：环境仅有 `DEEPSEEK_API_KEY`，无 `LLM_BASE_URL`/`LLM_MODEL`。PR4 接 LLM 时需让配置层支持 DeepSeek（baseURL `https://api.deepseek.com`、用 `DEEPSEEK_API_KEY`、model 待定），单测仍走 fixture 不依赖真实 key。
 - [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
@@ -189,6 +194,8 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 5. **冷上下文对抗复核**：在第 2、4、6…个 PR 的 `pr create` 之前，派 `/code-review`（正确性/复用/简化）+ `/security-review`（安全面）各跑一次，用**独立上下文冷读这两个 PR 的合并差异**，结论交用户。中间的 PR（第 1、3、5…）只走 A 档，不跑大审查，避免托节奏。
 
 > 节奏锚点：PR2 已跑大审查 ✅。**下一次大审查节点 = PR4**（覆盖 PR3 + PR4 的差异），之后 PR6、PR8。是否到节点不由 Claude 临场判断——按本表 PR 序号对照。
+>
+> **PR4 大审查基线（重要，防遗忘）**：PR3 已先行合并，故 PR4 冷审查必须把 diff 基线**锚到 PR3 合并之前**的 commit `dd47ed3`（PR2 合并点），即 `git diff dd47ed3...<pr4-head>`，这样才能覆盖 PR3+PR4 两批改动。直接用 `main...` 会漏掉已并入 main 的 PR3。
 
 ---
 

@@ -112,7 +112,9 @@ describe("splitScenes · scene candidates", () => {
   });
 
   it("splits on TRADITIONAL-character cues (話說 / 卻說) too", () => {
-    // Real samples (e.g. 公有领域《红楼梦》) are 繁體; cues must match both forms.
+    // Synthetic 林深 fixture written in 繁體 — NOT a 红楼梦 quote. The real
+    // 公有领域《红楼梦》sample (samples/) happens to be 繁體, so the cue
+    // matcher must handle both simplified and traditional forms.
     const body = "話說林深奉命查案，連夜趕路。卻說那兇手早已潛逃出城。";
     expect(scenesOf(body)).toEqual([
       "話說林深奉命查案，連夜趕路。",
