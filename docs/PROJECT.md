@@ -208,11 +208,11 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-1. 读本文件（`docs/PROJECT.md`）+ 必要时读 `~/.claude/plans/agent-vibe-coding-...md`。
+1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）+ 必要时读 `~/.claude/plans/agent-vibe-coding-...md`。
 2. `git checkout main && git pull --ff-only` 同步。
-3. 看「§6 PR 路线图」找到下一个未完成 PR（当前为 **PR2**）。
-4. 按「§8 工作流」开分支，按「具体开发优先 superpowers skill（TDD）」推进。
-5. 完成后更新本文件 §6 的进度勾选，并随 PR 一起提交。
+3. 看「§6 PR 路线图」找到下一个未完成 PR（当前为 **PR4 StoryBible Curator**；PR1/2/3 已合并，main 在 `083d4b6`）。注意 §6 路线图下方「待议决策」与 §8.1「PR4 大审查基线锚点 `dd47ed3`」。
+4. 按「§8 工作流」开分支，按「具体开发优先 superpowers skill（TDD）」推进；创意性组件（如 PR4 LLM agent）先 brainstorming 设计。
+5. 完成后：更新 §6 进度勾选 + 追加 `docs/DEVLOG.md` 本 PR 一节，跑齐 §8.1 门禁，随 PR 一起提交。
 
 ## 11. Demo 视频脚本（20%，最后录）
 
