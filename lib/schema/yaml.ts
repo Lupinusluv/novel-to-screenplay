@@ -11,14 +11,19 @@
 import { parse, stringify } from "yaml";
 import { parseScreenplay, type Screenplay } from "./screenplay";
 
-/** Serialize a screenplay to human-editable block YAML. */
+/**
+ * Serialize a screenplay to human-editable block YAML.
+ *
+ * The input is normalized through the schema first (applying defaults like
+ * `aliases: []`), so serialization is symmetric with `fromYAML` and the
+ * round-trip `fromYAML(toYAML(x))` is a true identity — and a malformed
+ * screenplay can never be silently written out.
+ */
 export function toYAML(screenplay: Screenplay): string {
-  return stringify(screenplay, {
+  return stringify(parseScreenplay(screenplay), {
     // Never emit `&anchor`/`*alias` for repeated nodes — they are correct
     // YAML but hostile to a human editor reading the screenplay.
     aliasDuplicateObjects: false,
-    // Keep block style; only fall back to flow for very deep nesting.
-    blockQuote: "literal",
   });
 }
 

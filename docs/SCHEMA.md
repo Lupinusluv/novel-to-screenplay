@@ -92,7 +92,7 @@ interface ReferenceIssue {
 **为什么分开**：
 - 一个场景可以**结构合法但引用了 Bible 尚未定义的 id**（流水线逐场景生成时很常见）。结构校验不该因此失败。
 - 自纠闭环需要**带位置的引用错误**回灌给 Scene Converter 重试；一个笼统的 `ZodError` 给不了「第几个 element 的哪个 id 错了」。
-- 空数组 = 通过。这正是 §4 职责表里 **Validator（格式审校）** 的「zod 校验 + 引用完整性」两件事，PR6 的 Validator 会直接复用这两块。
+- 空数组 = 通过。这正是 `PROJECT.md §4` 职责表里 **Validator（格式审校）** 的「zod 校验 + 引用完整性」两件事，PR6 的 Validator 会直接复用这两块。
 
 ### 3.5 枚举对齐行业标准
 `int_ext`（INT/EXT）、`time_of_day`（DAY/NIGHT/DAWN/DUSK/CONTINUOUS/LATER）用枚举。

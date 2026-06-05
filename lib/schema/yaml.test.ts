@@ -10,6 +10,18 @@ describe("toYAML / fromYAML round-trip", () => {
     expect(restored).toEqual(original);
   });
 
+  it("round-trips to identity even when optional fields (aliases) are omitted", () => {
+    // toYAML normalizes through the schema, so an omitted `aliases` becomes
+    // `[]` before serialization — fromYAML then sees the same value.
+    const restored = fromYAML(
+      toYAML({
+        ...validScreenplay(),
+        characters: [{ id: "char_x", name: "无名" } as never],
+      }),
+    );
+    expect(restored.characters[0].aliases).toEqual([]);
+  });
+
   it("produces human-readable YAML with block keys (not inline JSON)", () => {
     const yaml = toYAML(validScreenplay());
     expect(yaml).toContain("title: 深夜咖啡馆");
