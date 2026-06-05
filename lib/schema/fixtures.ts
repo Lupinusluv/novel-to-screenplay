@@ -14,7 +14,7 @@ export function validScreenplay(over: Partial<Screenplay> = {}): Screenplay {
         arc: "从怀疑到信任",
       },
     ],
-    locations: [{ id: "loc_cafe", name: "街角咖啡馆" }],
+    locations: [{ id: "loc_cafe", name: "街角咖啡馆", aliases: [] }],
     scenes: [
       {
         id: "scene_1",

@@ -49,6 +49,9 @@ export const CharacterSchema = z.strictObject({
 export const LocationSchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().min(1),
+  /** Alternate names for the same place (荣国府/荣府) — cross-chapter glue,
+   *  symmetric with Character so the curator can merge location variants. */
+  aliases: z.array(z.string()).default([]),
   description: z.string().optional(),
 });
 

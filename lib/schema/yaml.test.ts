@@ -35,8 +35,8 @@ describe("toYAML / fromYAML round-trip", () => {
     const yaml = toYAML(
       validScreenplay({
         locations: [
-          { id: "loc_a", name: "重复的名字" },
-          { id: "loc_b", name: "重复的名字" },
+          { id: "loc_a", name: "重复的名字", aliases: [] },
+          { id: "loc_b", name: "重复的名字", aliases: [] },
         ],
       }),
     );
