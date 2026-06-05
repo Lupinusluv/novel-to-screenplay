@@ -133,8 +133,8 @@ scenes:
 每个 PR = 一分支，自带测试，单一职责。
 
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
-- [ ] **PR2 Schema + 文档** — ⏭️ 下一个。`lib/schema/screenplay.ts`(zod)+`lib/schema/yaml.ts` + `docs/SCHEMA.md`；round-trip + 引用完整性测试。
-- [ ] **PR3 Chunker + 示例小说** — `lib/agent/chunker.ts` 分章/分场景 + `samples/` ≥3 章中文示例。
+- [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
+- [ ] **PR3 Chunker + 示例小说** — ⏭️ 下一个。`lib/agent/chunker.ts` 分章/分场景 + `samples/` ≥3 章中文示例。
 - [ ] **PR4 StoryBible Curator** — 跨章人物/地点/时间线抽取，aliases 合并，稳定 id；fixture 测试。
 - [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
