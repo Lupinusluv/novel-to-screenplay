@@ -134,8 +134,8 @@ scenes:
 
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
 - [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
-- [ ] **PR3 Chunker + 示例小说** — ⏭️ 下一个。`lib/agent/chunker.ts` 分章/分场景 + `samples/` ≥3 章中文示例。
-- [ ] **PR4 StoryBible Curator** — 跨章人物/地点/时间线抽取，aliases 合并，稳定 id；fixture 测试。
+- [x] **PR3 Chunker + 示例小说** — ✅ 完成。`lib/agent/chunker.ts`(确定性分章/两遍分场景：分隔行+大空行+转场提示词) + `samples/honglou-meng-ch1-3.txt`(公有领域《红楼梦》前三回真实文本)；13 测试(含真实样本冒烟 + 锚定正则拒绝正文「第四回中…」回归)。
+- [ ] **PR4 StoryBible Curator** — ⏭️ 下一个（**大审查锚点**：覆盖 PR3+PR4）。跨章人物/地点/时间线抽取，aliases 合并，稳定 id；fixture 测试。
 - [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
