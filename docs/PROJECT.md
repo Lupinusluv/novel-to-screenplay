@@ -133,8 +133,8 @@ scenes:
 每个 PR = 一分支，自带测试，单一职责。
 
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
-- [ ] **PR2 Schema + 文档** — ⏭️ 下一个。`lib/schema/screenplay.ts`(zod)+`lib/schema/yaml.ts` + `docs/SCHEMA.md`；round-trip + 引用完整性测试。
-- [ ] **PR3 Chunker + 示例小说** — `lib/agent/chunker.ts` 分章/分场景 + `samples/` ≥3 章中文示例。
+- [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
+- [ ] **PR3 Chunker + 示例小说** — ⏭️ 下一个。`lib/agent/chunker.ts` 分章/分场景 + `samples/` ≥3 章中文示例。
 - [ ] **PR4 StoryBible Curator** — 跨章人物/地点/时间线抽取，aliases 合并，稳定 id；fixture 测试。
 - [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
@@ -174,6 +174,21 @@ git push -u origin prN-xxx
 git checkout main && git pull --ff-only
 ```
 commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+
+### 8.1 质量门禁（防致幻/记忆漂移的硬约束）
+
+这些是**接续会话每次都要重读并执行的事实来源**，不依赖 Claude 当下的自觉判断。分两档节奏：
+
+**A. 每个 PR 必跑（轻量，不托节奏）**
+1. **外部判官**：实现完成后必跑 `npm test`（vitest 全绿）+ `npx tsc --noEmit`（类型无误），并在对话中**贴原始输出**。无输出的「通过」断言一律不算数。
+2. **TDD 证据**：新测试必须先展示**先红**（证明测试非空、真在测目标），再实现到绿。
+3. **开发纪实**：合并前在 `docs/DEVLOG.md` 追加本 PR 一节（亮点 / 踩坑大 bug / 痛点权衡 / demo 可讲的一句话），服务后期 demo「有话可说」。只记真事。
+4. **人为放行**：结论摆给用户，**用户点头才 merge**。
+
+**B. 每累计 2 个 PR 跑一次（重量级冷上下文大审查）**
+5. **冷上下文对抗复核**：在第 2、4、6…个 PR 的 `pr create` 之前，派 `/code-review`（正确性/复用/简化）+ `/security-review`（安全面）各跑一次，用**独立上下文冷读这两个 PR 的合并差异**，结论交用户。中间的 PR（第 1、3、5…）只走 A 档，不跑大审查，避免托节奏。
+
+> 节奏锚点：PR2 已跑大审查 ✅。**下一次大审查节点 = PR4**（覆盖 PR3 + PR4 的差异），之后 PR6、PR8。是否到节点不由 Claude 临场判断——按本表 PR 序号对照。
 
 ---
 
