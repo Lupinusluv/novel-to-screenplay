@@ -175,6 +175,17 @@ git checkout main && git pull --ff-only
 ```
 commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
 
+### 8.1 质量门禁（每个 PR 合并前**强制**，不可凭判断跳过）
+
+防致幻/记忆漂移的硬约束。这些是**接续会话每次都要重读并执行的事实来源**，不依赖 Claude 当下的自觉判断：
+
+1. **外部判官**：实现完成后必跑 `npm test`（vitest 全绿）+ `npx tsc --noEmit`（类型无误），并在对话中**贴原始输出**。无输出的「通过」断言一律不算数。
+2. **TDD 证据**：新测试必须先展示**先红**（证明测试非空、真在测目标），再实现到绿。
+3. **冷上下文对抗复核**：`pr create` **之前**，派 `/code-review`（代码正确性/复用/简化）+ `/security-review`（安全面）各跑一次——二者用**独立上下文冷读 diff**，结论交用户。
+4. **人为放行**：以上结论摆给用户，**用户点头才 merge**。Claude 触发审查，用户拍板放行。
+
+> 适用范围：每个 PR 无差别执行（哪怕「只是个 schema」也跑 security-review——是否有安全面不由 Claude 临场判断）。
+
 ---
 
 ## 9. 环境坑（重要）
