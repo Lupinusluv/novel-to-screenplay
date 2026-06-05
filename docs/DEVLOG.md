@@ -111,3 +111,27 @@
 - 结论：6 决策（R1–R6）+ 8 增量（I1–I8）落进 spec §10，作为实现权威依据。
 
 **可讲的一句话**：「我把对单会话的不信任做成了两道**真·外部判官**：gstack 的结构化工程评审 + codex 的跨模型冷读。后者当场逮到三个我和设计都没看见的盲点——其中一个（地点没有别名字段）是会在 PR5 才爆的管线断裂。这再次坐实：绿 ≠ 对，自己看自己的设计有滤镜。」
+
+### PR4 实现纪实（TDD T1–T4，2026-06-06）
+
+**架构落地（map-reduce + 确定性 id 后处理）**
+- `lib/agent/storyBible.ts`：map（逐章 LLM，`Promise.all` 并行）→ reduce（单次 LLM 合并别名）→ `assignIds`（确定性 slug + 去重 + 稳定排序兜底）→ schema-clean 实体 + `provenance` 侧表 → `validateStoryBible` 防御兜底。
+- **id 三权分立**落到代码：LLM 只给 `romanization` 提示，代码 `sanitizeSlug` 是唯一 id 权威。真 DeepSeek 跑出来的 id 干净可读（`char_lin_dai_yu`/`loc_rong_guo_fu`），印证了「LLM 提示 + 代码权威」这条决策。
+- **纯函数全部独立可测**：`assignIds`/`coerceMapEntities`/`computeProvenance`/`sanitizeSlug` 不碰 LLM，先把确定性逻辑 red-green 钉死，再用内容键控 stub 测编排——网络与逻辑彻底分离。
+
+**真实大 bug / 踩坑（最有料的两条）**
+- **真 LLM 逼出的管线裂缝（正是门控冒烟的意义）**：fixture 全绿、tsc 干净后，跑 `LLM_SMOKE=1` 真打 DeepSeek，**当场炸出**——map 阶段真模型会给【地点】也输出 `aliases`，而我按 v1 设计把 `MapLocationSchema` 建成「地点无别名」的 `strictObject`，严格拒绝直接抛错。这是 fixture 永远想不到、只有真模型才暴露的：`aliases` 是 R5 之后的**合法字段**而非脏数据，于是给 map 地点补上 `aliases`（与人物对称）、provenance 同步纳入。**绿 ≠ 对，又一次由真数据证明。**
+- **并发测试 stub 的内容键控陷阱（I7 的真实代价）**：map 改 `Promise.all` 后，stub 必须按内容而非调用顺序路由（I7）。初版按「全部消息内容」匹配章节 token，结果 `MAP_SYSTEM` 里写的示例「（如「宝玉/宝二爷」）」命中了**每一个** map 调用——第 3 章被误路由到第 2 章的 fixture，provenance 串味成 `[1,2,3]`。靠 debug 打印定位后，改成**只匹配 user 消息（章节正文）**修复。教训：内容键控的「内容」要精确到消息角色，prompt 里的示例文本是隐形污染源。
+
+**一个被真数据纠正的叙事**
+- PR3 DEVLOG 曾设想「宝玉/黛玉/凤姐多称呼是 PR4 alias 合并的演示弹药」。真跑发现：**截断版前三回里寶玉本人尚未登场**（模型抽到的是石頭/頑石/美玉——通灵宝玉的前身），demo 弹药其实是 **賈雨村（雨村/賈化/太爺/本府知府 四别名合并）、林黛玉、榮國府/榮府（地点别名，R5 实证）**。冒烟测试目标据此纠偏。提醒：叙事要跟着真数据走，别照搬旧假设。
+
+**一个工程判断（门控机制 vs 锁定 spec）**
+- spec R4 写「冒烟仅凭检测到 `DEEPSEEK_API_KEY` 就跑」，目标却是「合 §8.1：npm test 默认不烧 key」。但本机 env **常驻** `DEEPSEEK_API_KEY`，纯按 key 门控会让每次 `npm test` 都真打 DeepSeek——与 §8.1 自相矛盾（R4 作者没料到 key 常驻）。把分歧摆给用户，决定改为 **`LLM_SMOKE=1` 显式 opt-in + key 双条件**：默认（含本机）一律 skip，CI 无 key 也 skip，合 §8.1 硬约束、仅轻微偏离 R4 字面而忠于其本意。**锁定的 spec 也可能内部不一致，照搬字面不如忠于意图——但偏离要交用户拍板。**
+
+**门禁证据**
+- TDD：T1–T4 每个新函数/分支先红后绿（schema 拒识、配置回退、id 兜底、合并、provenance、错误冒泡均先看失败）。
+- `npm test`：**73 passed | 1 skipped**（冒烟默认 skip）；`npx tsc --noEmit` 干净；`LLM_SMOKE=1` 真冒烟 **1 passed（15.9s，真打 DeepSeek）**。
+- 大审查（`/code-review`+`/security-review`，diff 锚 `dd47ed3` 覆盖 PR3+PR4）在 `pr create` 前跑。
+
+**可讲的一句话**：「fixture 全绿、类型干净之后，我特意花一次真 DeepSeek 调用跑门控冒烟——它当场炸出一个 fixture 永远测不到的管线裂缝（真模型给地点也输出别名，被我的严格 schema 拒掉）。这就是为什么我坚持留一道**真模型**的闸：合成数据能证明逻辑对，但只有真数据能证明**契约对**。」

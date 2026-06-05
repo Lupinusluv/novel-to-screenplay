@@ -135,12 +135,14 @@ scenes:
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
 - [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
 - [x] **PR3 Chunker + 示例小说** — ✅ 完成。`lib/agent/chunker.ts`(确定性分章/两遍分场景：分隔行+大空行+转场提示词) + `samples/honglou-meng-ch1-3.txt`(公有领域《红楼梦》前三回真实文本)；13 测试(含真实样本冒烟 + 锚定正则拒绝正文「第四回中…」回归)。
-- [ ] **PR4 StoryBible Curator** — 🔨 **进行中（设计已锁，待 TDD 实现）**。分支 `pr4-storybible`（**不在 main**）。
-  跨章人物/地点抽取（map-reduce）、aliases 合并、确定性稳定 id；fixture 测试 + 一个门控真 LLM 冒烟。
-  **设计已通过 gstack `/plan-eng-review` + codex outside-voice 评审并锁定** → 见
-  `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md`，**实现以该文 §10「评审结论与设计增量」为准**
-  （R1–R6 决策 + I1–I8 增量；§10 覆盖 v1，冲突处以 §10 为准）。**下一步直接 TDD，不要重新 brainstorming / 重新评审。**
-  （**大审查锚点**：`pr create` 前仍要跑 `/code-review`+`/security-review`，diff 基线锚 `dd47ed3`，覆盖 PR3+PR4。）
+- [x] **PR4 StoryBible Curator** — 🔨 **TDD 实现完成，待大审查 + merge**。分支 `pr4-storybible`（**尚未并入 main**）。
+  `lib/agent/storyBible.ts`：map-reduce + 确定性 id 后处理（`assignIds`/`sanitizeSlug`）、人物**与地点**别名合并、
+  `provenance` 侧表（R6）、中间层 zod（I1）+ 强校验 `validateStoryBible`（I2）；`LocationSchema.aliases`（R5）、
+  `loadLLMConfigFromEnv` DeepSeek 回退（I8）。**74 测试**（含 1 门控真 LLM 冒烟，默认 skip）；`tsc` 干净。
+  设计依据见 `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md §10`（R1–R6 + I1–I8）。
+  实现纪实与真数据逼出的修复见 `docs/DEVLOG.md` PR4 实现纪实节。
+  （**门控决策**：真冒烟用 `LLM_SMOKE=1` 显式 opt-in + key 双条件，默认/本机/CI 均 skip，合 §8.1。）
+  （**大审查锚点**：`pr create` 前跑 `/code-review`+`/security-review`，diff 基线锚 `dd47ed3`，覆盖 PR3+PR4。）
 
 > **待议决策（defer 到对应 PR，勿遗忘）**：
 > - **示例小说改用简体**（便于 demo 展示）。当前 `samples/honglou-meng-ch1-3.txt` 是繁體红楼梦；换简体样本时同步更新 chunker 的繁體 cue 冒烟测试（繁體 cue 支持可保留作健壮性）。—— 到 PR5 / demo 阶段定。
@@ -215,8 +217,9 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-06）**：PR4 设计已锁，**在分支 `pr4-storybible` 上、尚未写实现代码**。
-> 该分支已有 2 个提交（spec + 评审增量），未并入 main。**下一步是 TDD 实现，不是设计。**
+> **当前状态快照（2026-06-06）**：PR4 **TDD 实现已完成**（T1–T4 全绿），在分支 `pr4-storybible` 上、**尚未并入 main**。
+> 该分支含设计 spec + 4 个实现提交（T1 schema / T2 配置 / T3 Curator 核心 / T4 门控冒烟）。
+> **下一步：跑大审查（`/code-review`+`/security-review`，锚 `dd47ed3`）→ 交用户点头 → `pr create` → merge。** 实现已毕，勿重写。
 
 1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）。
 2. **接 PR4：`git checkout pr4-storybible`**（**不要 checkout main**——PR4 在这个分支上进行中）。
