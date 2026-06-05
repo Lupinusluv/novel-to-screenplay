@@ -111,6 +111,15 @@ describe("splitScenes · scene candidates", () => {
     ]);
   });
 
+  it("splits on TRADITIONAL-character cues (話說 / 卻說) too", () => {
+    // Real samples (e.g. 公有领域《红楼梦》) are 繁體; cues must match both forms.
+    const body = "話說林深奉命查案，連夜趕路。卻說那兇手早已潛逃出城。";
+    expect(scenesOf(body)).toEqual([
+      "話說林深奉命查案，連夜趕路。",
+      "卻說那兇手早已潛逃出城。",
+    ]);
+  });
+
   it("splits on a large blank gap (>=2 blank lines) but not single spacing", () => {
     const singleGap = "第一段。\n\n第二段。";
     expect(scenesOf(singleGap)).toHaveLength(1); // normal paragraph spacing
@@ -143,7 +152,14 @@ describe("chunkNovel · real sample 《红楼梦》前三回", () => {
   it("gives every chapter at least one substantive scene candidate", () => {
     for (const c of chapters) {
       expect(c.sceneCandidates.length).toBeGreaterThanOrEqual(1);
-      expect(c.sceneCandidates[0].text.length).toBeGreaterThan(20);
+      expect(c.sceneCandidates.some((s) => s.text.length > 20)).toBe(true);
     }
+  });
+
+  it("actually splits scenes on the 繁體 sample via 卻說/話說 cues", () => {
+    // Regression for the simplified-only cue gap caught while dogfooding:
+    // the 繁體 corpus must produce >1 scene candidate somewhere.
+    const total = chapters.reduce((n, c) => n + c.sceneCandidates.length, 0);
+    expect(total).toBeGreaterThan(chapters.length);
   });
 });

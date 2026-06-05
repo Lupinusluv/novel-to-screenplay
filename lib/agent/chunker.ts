@@ -99,11 +99,22 @@ const SEPARATOR_LINE = /^[*※◇＊\-—─═＝·•]{2,}$/;
  * punctuation / a newline — never mid-word.
  */
 const CUES = [
-  "次日", "翌日", "隔日", "数日后", "几日之后", "这一日", "这日", "那日",
-  "当晚", "当夜", "是夜", "话说", "却说", "且说", "再说", "单说",
-  "另一边", "另一头",
+  // shared across simplified/traditional
+  "次日", "翌日", "隔日", "那日", "是夜",
+  // simplified
+  "数日后", "几日之后", "这一日", "这日", "当晚", "当夜",
+  "话说", "却说", "且说", "再说", "单说", "另一边", "另一头",
+  // traditional — real public-domain corpora (《红楼梦》…) are 繁體
+  "數日後", "幾日之後", "這一日", "這日", "當晚", "當夜",
+  "話說", "卻說", "且說", "再說", "單說", "另一邊", "另一頭",
 ];
-const CUE_BREAK = new RegExp(`(?<=^|[。！？!?…\\n])(?:${CUES.join("|")})`, "g");
+// boundary (start | sentence-end | newline) + optional indentation + cue.
+// Indentation matters: 章回体 corpora indent paragraphs with full-width spaces
+// (`　　卻說…`), so the cue is rarely flush against the boundary.
+const CUE_BREAK = new RegExp(
+  `(^|[。！？!?…\\n])([ \\t　]*)(${CUES.join("|")})`,
+  "g",
+);
 
 /** Split a single segment before each transition cue (keeping the cue). */
 function splitOnCues(segment: string): string[] {
@@ -111,8 +122,9 @@ function splitOnCues(segment: string): string[] {
   let m: RegExpExecArray | null;
   CUE_BREAK.lastIndex = 0;
   while ((m = CUE_BREAK.exec(segment)) !== null) {
-    if (m.index > 0) breaks.push(m.index); // a cue at index 0 is not a break
-    if (CUE_BREAK.lastIndex === m.index) CUE_BREAK.lastIndex++;
+    const cueStart = m.index + m[1].length + m[2].length;
+    if (cueStart > 0) breaks.push(cueStart); // a cue at index 0 is not a break
+    if (CUE_BREAK.lastIndex <= m.index) CUE_BREAK.lastIndex = m.index + 1;
   }
   if (breaks.length === 0) return [segment];
   const parts: string[] = [];
