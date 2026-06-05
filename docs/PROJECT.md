@@ -135,12 +135,19 @@ scenes:
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
 - [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
 - [x] **PR3 Chunker + 示例小说** — ✅ 完成。`lib/agent/chunker.ts`(确定性分章/两遍分场景：分隔行+大空行+转场提示词) + `samples/honglou-meng-ch1-3.txt`(公有领域《红楼梦》前三回真实文本)；13 测试(含真实样本冒烟 + 锚定正则拒绝正文「第四回中…」回归)。
-- [ ] **PR4 StoryBible Curator** — ⏭️ 下一个（**大审查锚点**：覆盖 PR3+PR4）。跨章人物/地点/时间线抽取，aliases 合并，稳定 id；fixture 测试。
+- [ ] **PR4 StoryBible Curator** — 🔨 **进行中（设计已锁，待 TDD 实现）**。分支 `pr4-storybible`（**不在 main**）。
+  跨章人物/地点抽取（map-reduce）、aliases 合并、确定性稳定 id；fixture 测试 + 一个门控真 LLM 冒烟。
+  **设计已通过 gstack `/plan-eng-review` + codex outside-voice 评审并锁定** → 见
+  `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md`，**实现以该文 §10「评审结论与设计增量」为准**
+  （R1–R6 决策 + I1–I8 增量；§10 覆盖 v1，冲突处以 §10 为准）。**下一步直接 TDD，不要重新 brainstorming / 重新评审。**
+  （**大审查锚点**：`pr create` 前仍要跑 `/code-review`+`/security-review`，diff 基线锚 `dd47ed3`，覆盖 PR3+PR4。）
 
 > **待议决策（defer 到对应 PR，勿遗忘）**：
 > - **示例小说改用简体**（便于 demo 展示）。当前 `samples/honglou-meng-ch1-3.txt` 是繁體红楼梦；换简体样本时同步更新 chunker 的繁體 cue 冒烟测试（繁體 cue 支持可保留作健壮性）。—— 到 PR5 / demo 阶段定。
 > - **红楼梦不一定取前三回**作 demo；章节选择到对应 PR 再定。
-> - **LLM 配置缺口**：环境仅有 `DEEPSEEK_API_KEY`，无 `LLM_BASE_URL`/`LLM_MODEL`。PR4 接 LLM 时需让配置层支持 DeepSeek（baseURL `https://api.deepseek.com`、用 `DEEPSEEK_API_KEY`、model 待定），单测仍走 fixture 不依赖真实 key。
+> - **LLM 配置缺口**（已在 PR4 spec 定方案，实现待落地）：环境仅有 `DEEPSEEK_API_KEY`。方案 = `loadLLMConfigFromEnv`
+>   显式 `LLM_*` 优先、三者全缺时回退 DeepSeek（baseURL `https://api.deepseek.com`、model `deepseek-chat`）；
+>   **部分显式 + DeepSeek key → 报缺失项错、不回退**（spec §10 I8）。单测走 fixture 不烧 key。
 - [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
@@ -208,11 +215,23 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）+ 必要时读 `~/.claude/plans/agent-vibe-coding-...md`。
-2. `git checkout main && git pull --ff-only` 同步。
-3. 看「§6 PR 路线图」找到下一个未完成 PR（当前为 **PR4 StoryBible Curator**；PR1/2/3 已合并，main 在 `083d4b6`）。注意 §6 路线图下方「待议决策」与 §8.1「PR4 大审查基线锚点 `dd47ed3`」。
-4. 按「§8 工作流」开分支，按「具体开发优先 superpowers skill（TDD）」推进；创意性组件（如 PR4 LLM agent）先 brainstorming 设计。
-5. 完成后：更新 §6 进度勾选 + 追加 `docs/DEVLOG.md` 本 PR 一节，跑齐 §8.1 门禁，随 PR 一起提交。
+> **当前状态快照（2026-06-06）**：PR4 设计已锁，**在分支 `pr4-storybible` 上、尚未写实现代码**。
+> 该分支已有 2 个提交（spec + 评审增量），未并入 main。**下一步是 TDD 实现，不是设计。**
+
+1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）。
+2. **接 PR4：`git checkout pr4-storybible`**（**不要 checkout main**——PR4 在这个分支上进行中）。
+   `git log --oneline -3` 应看到顶端是「PR4 plan-eng-review: 评审增量…」`80c17ee` 与「PR4 设计: …spec」。
+   （若要起一个全新 PR 才回 main：`git checkout main && git pull --ff-only`。）
+3. 读 **`docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md`**——**§10「评审结论与设计增量」是实现的权威依据**
+   （R1–R6 决策 + I1–I8 增量 + 测试 GAP + 实现任务 T1–T4；§10 覆盖 v1 设计，冲突以 §10 为准）。
+4. **直接进 TDD（superpowers `test-driven-development`），按 §10 的 T1→T4 顺序**：T1 schema（LocationSchema 加 aliases、
+   中间层 zod、强校验）→ T2 配置回退 → T3 Curator 核心 → T4 门控真 LLM 冒烟。**不要重新 brainstorming、不要重新 plan-eng-review**（已做完）。
+5. 完成后：跑齐 §8.1 门禁（`npm test`+`npx tsc --noEmit` 贴原始输出、TDD 先红、更新 DEVLOG）；
+   `pr create` 前跑大审查 `/code-review`+`/security-review`（diff 基线锚 `dd47ed3`，覆盖 PR3+PR4）；更新 §6 进度勾选。
+
+**架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
+（`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
+若发现 gstack 子技能又不触发，见全局 `~/.claude/CLAUDE.md` 的「setup 静默跳过技能注册」修复办法。
 
 ## 11. Demo 视频脚本（20%，最后录）
 

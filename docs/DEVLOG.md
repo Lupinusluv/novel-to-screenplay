@@ -87,3 +87,27 @@
 - 确定性提示词切分必有误差，刻意定位为「候选」而非终稿，把语义精修留给 LLM 层——这是 agent 流水线「确定性工具 + LLM 精修」分工的体现。
 
 **可讲的一句话**：「分章器一行 LLM 都不调——它吃透中文章回体的排版语义(第N回、话说/却说)就把章与场景候选切出来；而真实《红楼梦》语料当场逼出一个合成数据想不到的边界 case（正文里以‘第四回中…’开头的句子），被我们的锚定正则挡下、钉进回归测试。真实语料替我们做了测试设计。」
+
+---
+
+## PR4 · StoryBible Curator —— 设计与评审（实现前，2026-06-06）🔨
+
+> 本节记录 PR4 **写第一行实现代码之前**的真实过程：设计、工具链踩坑、双层评审。代码待 TDD 落地（spec §10 T1–T4）。
+
+**设计（先 brainstorming 后评审）**
+- 选 **map-reduce + 确定性 id 后处理**：逐章 LLM 抽取（map）→ 单次 LLM 合并别名（reduce）→ 确定性代码分配稳定 id → zod 校验。
+- 四个 brainstorming 决策：分章抽取+LLM二次合并 / 确定性代码分配 id / **LLM 给 romanization 提示、代码是 id 权威**（规避拼音库多音字坑）/ 输出只产 schema 已有字段。
+- 设计落 `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md`。
+
+**工具链真实踩坑：gstack 子技能「静默没注册」**
+- AGENTS.md 约定「架构/规划优先 gstack」，但 gstack 的规划子技能（`/plan-eng-review` 等）**从不触发**，一路只走了 superpowers。
+- 逐层挖根因：① Claude Code 技能发现只扫一层，gstack 几十个子技能嵌在 `gstack/` 目录内、只有伞状 `gstack` 被注册，伞状 description 是「headless browser QA」——对「架构/规划」**没有语义触发面**；② 真因是 `./setup`（`set -e`）**先 bun 构建**，撞中文用户名非 ASCII temp 坑 abort，**没走到把子技能摊平成顶层技能的注册步**就退出，且**无报错**——一次失败同时造成「子技能没注册 + Chromium 没下载」。
+- 修复：带 `BUN_CMD`+ASCII `TMPDIR` 重跑 `./setup --host claude --prefix`，构建过关、注册步执行，**52 个 `gstack-*` 技能当场注册、技能表实时刷新**。办法已写进全局 `~/.claude/CLAUDE.md`。
+- **教训**：`set -e` 脚本里「构建在前、注册在后」，构建静默失败会连带吞掉后续步骤；表象（技能不触发）离根因（bun 非 ASCII）很远，靠读 setup 源码逐行定位，而非猜。
+
+**双层评审：本地 plan-eng-review + codex 跨模型冷读**
+- gstack `/plan-eng-review` 四段评审，本地抓到 4 issue（id 兜底不可复现、reduce 是真正的扩展天花板、concurrency 参数过早抽象、prompt 效力无法用 fixture 验证）。
+- 末尾 `codex exec`（read-only 沙箱）独立冷读，**逮到 3 个本地评审和设计都漏的盲点**：① `LocationSchema` 没有 `aliases`——地点别名合并后「荣府」无处存、PR5 解析不到（真·管线断裂）；② 缺 map/reduce 的**中间层 zod schema**（`chatJSON` 只解析不校验）；③ 章节溯源不该全扔——PR5 要靠它按章圈定候选实体，否则得把整本 bible 塞进每个场景 prompt。
+- 结论：6 决策（R1–R6）+ 8 增量（I1–I8）落进 spec §10，作为实现权威依据。
+
+**可讲的一句话**：「我把对单会话的不信任做成了两道**真·外部判官**：gstack 的结构化工程评审 + codex 的跨模型冷读。后者当场逮到三个我和设计都没看见的盲点——其中一个（地点没有别名字段）是会在 PR5 才爆的管线断裂。这再次坐实：绿 ≠ 对，自己看自己的设计有滤镜。」
