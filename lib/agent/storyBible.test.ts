@@ -225,6 +225,13 @@ describe("MapEntitiesSchema (per-chapter LLM output)", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts location aliases at the map stage (real models emit them)", () => {
+    const parsed = MapEntitiesSchema.parse({
+      locations: [{ name: "荣国府", aliases: ["荣府"], romanization: "rongguofu" }],
+    });
+    expect(parsed.locations[0].aliases).toEqual(["荣府"]);
+  });
 });
 
 describe("ReduceEntitiesSchema (merged, still id-less)", () => {

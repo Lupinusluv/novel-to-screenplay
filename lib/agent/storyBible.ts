@@ -41,9 +41,12 @@ const MapCharacterSchema = z.strictObject({
   description: z.string().optional(),
 });
 
-/** A location as extracted from a single chapter (map stage, no aliases yet). */
+/** A location as extracted from a single chapter (map stage). Real models do
+ *  emit within-chapter variants (荣国府/荣府), so aliases are accepted here too —
+ *  symmetric with characters and with the R5 location-aliases field. */
 const MapLocationSchema = z.strictObject({
   name: z.string().min(1),
+  aliases: z.array(z.string()).default([]),
   romanization: z.string().optional(),
   description: z.string().optional(),
 });
@@ -409,7 +412,7 @@ export async function curateStoryBible(
   }));
   const locForms = perChapter.map((p) => ({
     chapter: p.chapter,
-    forms: p.entities.locations.map((e) => e.name),
+    forms: p.entities.locations.flatMap((e) => [e.name, ...e.aliases]),
   }));
   const provenance = {
     ...computeProvenance(characters, charForms),
