@@ -296,3 +296,14 @@
 **记为已知/取舍保留**（recall 模式列出但不修）：locateExcerpt step-3 末尾并入尾随空白（已文档化「仅位置偏、数据不错」）；`excerptOf` 在 120 cap 处理论上劈代理对（PR5 旧码、极罕见）；needle 那趟 `normalizeWithMap` 建小 map 丢弃（excerpt ≤120 字，开销可忽略）；chunker 与 locateExcerpt 各自的空白折叠概念重复（E10 边界禁共享，定义有意不同）。
 
 修完门禁：`npm test` = **253 passed | 3 skipped**（+1 resync 测）｜`tsc` exit 0｜`lint` 0 warning。
+
+### PR8 用户实跑反馈·A 档快修（2026-06-07，用户亲自跑 dev server 后）
+
+用户实跑提了 6 条；按「纯前端 + 工作量」分档，**A 档（小、纯前端、属 PR8 打磨职责）补进本 PR**，B/C 档（多文件上传 / 视觉升级 / YAML 空行 / 现代散文切分调上限）开后续 PR。本次落地两条：
+1. **进度条做完不收**（AgentTimeline）：`showProgress` 原只看有无 total、没看阶段状态 → 完成后「逐场景转换 N/N」仍挂着，像卡住。改为仅 `status==="active"` 时显示，done/error 即收起。加测试断言 done 后不残留「逐场景转换 / 1 / 1」。
+2. **卡片显示原始 id 难读**（SceneCard ← ScreenplayView）：slug 原样显示 `loc_rongguo`、对白显示 `char_daiyu`。改：`ScreenplayView` 从 screenplay 建 `id→name` Map（useMemo）传下，`SceneCard` 解析成中文名（荣国府 / 林黛玉），`INT/EXT`→内景/外景、`DAY/NIGHT/…`→日/夜/拂晓/黄昏/连续/稍后；无名（流式中/断引用）回退原 id。加测试：给 Map 显名、不给回退 id。
+
+> 答疑（非代码）：左下角小 N = Next.js 框架开发工具悬浮钮，仅 dev 模式有，生产不出现，非本项目功能。YAML key 维持英文（行业剧本格式 + zod/round-trip 基石），不全改中文。
+> 已知/排后续：#4 现代散文无章回体切分线索 → 整篇成 1 个超大场景候选超 `SCENE_BODY_CAP=4000` → 诚实截断 + needs_review（设计如此，非 bug）；正解是后端 chunker 增「按空行/长度切场景」+ 调上限，属 C 档单独后端 PR。
+
+门禁：`npm test` = **256 passed | 3 skipped**（+3 测）｜`tsc` exit 0｜`lint` 0 warning。

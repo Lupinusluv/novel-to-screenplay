@@ -31,4 +31,23 @@ describe("AgentTimeline", () => {
     expect(scenesRow).toHaveTextContent("进行中");
     expect(scenesRow).toHaveTextContent("3 / 9");
   });
+
+  it("hides the in-progress bar once the scenes stage is done (no lingering N/N)", () => {
+    const state: PipelineState = {
+      ...initialPipelineState(),
+      status: "done",
+      stages: {
+        chunk: { status: "done" },
+        storybible: { status: "done" },
+        scenes: { status: "done", done: 1, total: 1 },
+        assemble: { status: "done" },
+      },
+    };
+    render(<AgentTimeline state={state} />);
+    const scenesRow = screen.getByText(/场景编剧/).closest("li");
+    expect(scenesRow).toHaveTextContent("完成");
+    // the running progress readout must not linger after completion
+    expect(scenesRow).not.toHaveTextContent("逐场景转换");
+    expect(scenesRow).not.toHaveTextContent("1 / 1");
+  });
 });

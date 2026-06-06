@@ -14,19 +14,52 @@
 "use client";
 
 import { useState } from "react";
-import type { Scene, Element } from "../../lib/schema/screenplay";
+import type {
+  Scene,
+  Element,
+  IntExt,
+  TimeOfDay,
+} from "../../lib/schema/screenplay";
 import { SourceModal } from "./SourceModal";
 
-function SlugLine({ scene }: { scene: Scene }) {
+/** A read-only id→name lookup; missing ids fall back to the raw id. */
+type NameMap = Map<string, string>;
+
+const INT_EXT_LABEL: Record<IntExt, string> = { INT: "内景", EXT: "外景" };
+const TIME_LABEL: Record<TimeOfDay, string> = {
+  DAY: "日",
+  NIGHT: "夜",
+  DAWN: "拂晓",
+  DUSK: "黄昏",
+  CONTINUOUS: "连续",
+  LATER: "稍后",
+};
+
+const nameOf = (map: NameMap | undefined, id: string) => map?.get(id) ?? id;
+
+function SlugLine({
+  scene,
+  locations,
+}: {
+  scene: Scene;
+  locations?: NameMap;
+}) {
   const { int_ext, location_id, time_of_day } = scene.heading;
   return (
-    <p className="font-mono text-xs font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">
-      {int_ext} · {location_id} · {time_of_day}
+    <p className="text-xs font-semibold tracking-wide text-zinc-500 dark:text-zinc-400">
+      {INT_EXT_LABEL[int_ext]} · {nameOf(locations, location_id)} ·{" "}
+      {TIME_LABEL[time_of_day]}
     </p>
   );
 }
 
-function ElementRow({ element }: { element: Element }) {
+function ElementRow({
+  element,
+  characters,
+}: {
+  element: Element;
+  characters?: NameMap;
+}) {
   if (element.type === "action") {
     return (
       <p className="text-sm leading-6 text-zinc-700 dark:text-zinc-300">
@@ -37,8 +70,8 @@ function ElementRow({ element }: { element: Element }) {
   if (element.type === "dialogue") {
     return (
       <div className="pl-4">
-        <p className="font-mono text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          {element.character_id}
+        <p className="text-xs font-semibold tracking-wide text-zinc-600 dark:text-zinc-300">
+          {nameOf(characters, element.character_id)}
         </p>
         {element.parenthetical && (
           <p className="text-xs italic text-zinc-400">
@@ -62,11 +95,16 @@ export function SceneCard({
   scene,
   novel = "",
   reviewMessage,
+  characters,
+  locations,
 }: {
   scene: Scene;
   novel?: string;
   /** The needs-review reason (a per-scene warning message), shown on expand. */
   reviewMessage?: string;
+  /** id→name lookups so the card shows 荣国府/林黛玉, not the raw loc_/char_ ids. */
+  characters?: NameMap;
+  locations?: NameMap;
 }) {
   const [showReason, setShowReason] = useState(false);
 
@@ -81,7 +119,7 @@ export function SceneCard({
     <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <header className="mb-2 flex items-start justify-between gap-2">
         <div>
-          <SlugLine scene={scene} />
+          <SlugLine scene={scene} locations={locations} />
           <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
             {scene.synopsis}
           </p>
@@ -106,7 +144,7 @@ export function SceneCard({
 
       <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-800">
         {scene.elements.map((element, i) => (
-          <ElementRow key={i} element={element} />
+          <ElementRow key={i} element={element} characters={characters} />
         ))}
       </div>
 

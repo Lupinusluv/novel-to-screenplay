@@ -49,6 +49,29 @@ describe("SceneCard", () => {
     expect(screen.getAllByText("原文片段").length).toBeGreaterThan(0);
   });
 
+  it("resolves location/character ids to Chinese names and translates the slug enums", () => {
+    render(
+      <SceneCard
+        scene={makeScene()}
+        locations={new Map([["loc_rongguo", "荣国府"]])}
+        characters={new Map([["char_daiyu", "林黛玉"]])}
+      />,
+    );
+    // slug shows the location NAME + Chinese int/ext + time, not the raw id
+    // (regex pins the slug line specifically; the synopsis also says 荣国府)
+    expect(screen.getByText(/内景.*荣国府.*日/)).toBeInTheDocument();
+    expect(screen.queryByText(/loc_rongguo/)).not.toBeInTheDocument();
+    // dialogue speaker shows the character NAME, not char_daiyu
+    expect(screen.getByText("林黛玉")).toBeInTheDocument();
+    expect(screen.queryByText("char_daiyu")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the raw id when no name is known (e.g. streaming)", () => {
+    render(<SceneCard scene={makeScene()} />);
+    expect(screen.getByText(/loc_rongguo/)).toBeInTheDocument();
+    expect(screen.getByText("char_daiyu")).toBeInTheDocument();
+  });
+
   it("expands the needs-review badge to reveal its reason message", () => {
     render(
       <SceneCard

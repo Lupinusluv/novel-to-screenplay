@@ -64,6 +64,20 @@ export function ScreenplayView({
     return m;
   }, [warnings]);
 
+  // id→name lookups so cards render 荣国府/林黛玉 instead of raw loc_*/char_* ids.
+  // Available once final_result lands (screenplay present); during streaming the
+  // cards fall back to ids, which is fine.
+  const characterNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of screenplay?.characters ?? []) m.set(c.id, c.name);
+    return m;
+  }, [screenplay]);
+  const locationNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of screenplay?.locations ?? []) m.set(l.id, l.name);
+    return m;
+  }, [screenplay]);
+
   return (
     <section className="flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -121,6 +135,8 @@ export function ScreenplayView({
                 scene={scene}
                 novel={novel}
                 reviewMessage={warningById.get(scene.id)}
+                characters={characterNames}
+                locations={locationNames}
               />
             ))
           )}
