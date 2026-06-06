@@ -163,13 +163,13 @@ scenes:
   评审增量全部落地：E1 地点诚实回退（最小 id scoped、明标 `heading unverified`，堵掉「结构有效的语义谎言」）、E2 歧义三级梯（name>alias>scoped>码点序 + `ambiguous_reference`+candidates）、E3 coerce 剔噪、E5 降级台词「」包裹、E6 `SCENE_BODY_CAP` 截断诚实化、I6 全库解析=有效引用。
   **122 passed | 2 skipped**（含 PR5 门控真冒烟，默认 skip；`LLM_SMOKE=1` 实跑 1 passed ≈20s）；`tsc` 干净；`lint` 干净。
   设计 spec + §11 权威增量见 `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`；TDD 实现纪实（含真模型冒烟逼出的样本叙事纠偏、实证 E4 defer 正确）见 `docs/DEVLOG.md` PR5 节。
-- [ ] **PR6 Validator + Critic + Orchestrator + SSE** — ✅ **设计 + TDD 实现完成、每-PR 门禁通过，待大审查 + merge**（未推 origin）。
+- [x] **PR6 Validator + Critic + Orchestrator + SSE** — ✅ **已并入 main（#8，merge commit `69ff533`）**。
   四组件 `lib/agent/validator.ts`（整部门禁 D3）/ `critic.ts`（第二个 LLM agent，语义自评）/ `orchestrator.ts`（`runPipeline` 双层自纠不动点 + 并行 + SSE 事件，+ `pipelineToSSEStream`）+ `events.ts`/`sse.ts`（事件契约 + typed SSE 编码）+ `app/api/convert/route.ts`（Next16 SSE 路由）+ `sceneConverter.ts` 加可选 `revision` 参数（D1）。
   codex 冷读 6/10→收紧，§11 权威增量 E1–E14 全落地（双层不动点重试 / throw 纳入预算 / 不动点+环检测 / 并行不打乱章节序 / final_result typed 事件 / abort + Next runtime）。
-  **157 passed | 3 skipped**（含 PR6 门控真冒烟，默认 skip）；`tsc` 干净；`lint` 干净；`LLM_SMOKE=1` 真端到端冒烟 1 passed（≈48s，9 场景全流程）。
-  设计 spec 见 `docs/superpowers/specs/2026-06-06-pr6-validator-critic-orchestrator-design.md`；实现纪实见 `docs/DEVLOG.md` PR6 节。
-  **下一步 = 大审查批次**：`/code-review`+`/security-review` 冷读 `git diff f41c257...HEAD`（覆盖 PR5+PR6）→ 用户点头 → push + PR + merge（§8）。
-- [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
+  **大审查已过**（`/code-review`+`/security-review` 冷读 `f41c257..69ff533` 覆盖 PR5+PR6）：code-review 5 条（1 真 correctness「语义臂吞占位场景」+ 4 健壮性/LOW），security 0 条；#1–#4 已 TDD 修掉，#5 评估后留。
+  **162 passed | 3 skipped**（含 PR6 门控真冒烟，默认 skip）；`tsc` 干净；`lint` 干净；`LLM_SMOKE=1` 真端到端冒烟 1 passed（≈43s，9 场景全流程）。
+  设计 spec 见 `docs/superpowers/specs/2026-06-06-pr6-validator-critic-orchestrator-design.md`；实现 + 大审查纪实见 `docs/DEVLOG.md` PR6 节。
+- [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。**下一步、进行中**（分支 `pr7-frontend`）：消费 `POST /api/convert` 的 SSE 事件契约（`lib/agent/events.ts`）；`app/page.tsx` 当前是脚手架默认页待替换。单 PR 轻量门禁批次，下次大审查 PR8（锚 `69ff533`）。
 - [ ] **PR8 Agent 可视化 + 溯源 + 打磨** — 进度时间线随 SSE 点亮、场景溯源、空/错状态、README + demo 脚本。
 
 ---
@@ -219,9 +219,7 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 **B. 每累计 2 个 PR 跑一次（重量级冷上下文大审查）**
 5. **冷上下文对抗复核**：在第 2、4、6…个 PR 的 `pr create` 之前，派 `/code-review`（正确性/复用/简化）+ `/security-review`（安全面）各跑一次，用**独立上下文冷读这两个 PR 的合并差异**，结论交用户。中间的 PR（第 1、3、5…）只走 A 档，不跑大审查，避免托节奏。
 
-> 节奏锚点：PR2 ✅、**PR4 ✅（已跑，锚 `dd47ed3` 覆盖 PR3+PR4）**。**当前大审查节点 = PR6**（覆盖 PR5 + PR6），之后 PR8。是否到节点不由 Claude 临场判断——按本表 PR 序号对照。**PR5 已走 A 档合并、未跑大审查（按计划归入 PR6 批次）。**
->
-> **PR6 大审查基线（重要，防遗忘）**：PR5 会先行合并，故 PR6 冷审查须把 diff 基线**锚到 PR5 合并之前** = **PR4 合并点 `f41c257`**，即 `git diff f41c257...<pr6-head>`，覆盖 PR5+PR6 两批改动。直接用 `main...` 会漏掉已并入 main 的 PR5。
+> 节奏锚点：PR2 ✅、**PR4 ✅（锚 `dd47ed3` 覆盖 PR3+PR4）**、**PR6 ✅（锚 `f41c257` 覆盖 PR5+PR6，已跑）**。**下一个大审查节点 = PR8**（覆盖 PR7 + PR8，基线锚 **PR6 合并点 `69ff533`**，即 `git diff 69ff533...<pr8-head>`）。是否到节点不由 Claude 临场判断——按本表 PR 序号对照。**PR7 只走 A 档、不跑大审查。**
 
 ---
 
@@ -234,16 +232,19 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-06）**：**PR1–PR5 全部已并入 main**，main 在 **`42454b7`**（Merge PR #7，PR5 Scene Converter）。
-> **PR6 Validator + Critic + Orchestrator + SSE：设计 + TDD 实现 + 大审查全部完成、每-PR 门禁通过，待用户点头 merge。** 分支 **`pr6-validator-critic-orchestrator`**（基于 main `42454b7`，HEAD `6cbe061`，5 commit：状态同步×2 + 设计 spec + 实现 + 大审查修复；**未推 origin、未 merge**）。
-> 分支上 `npm test` = **162 passed | 3 skipped**（PR4/PR5/PR6 三门控冒烟默认 skip），`tsc` 干净，`lint` 干净，`LLM_SMOKE=1` 真端到端冒烟通过（≈43s）。
-> **大审查已跑**（§8.1，冷读 `f41c257..HEAD` 覆盖 PR5+PR6）：`/code-review` 5 条（1 真 correctness「语义臂吞占位场景」+ 4 健壮性/LOW），`/security-review` 0 条；#1–#4 已 TDD 修掉、#5（abort 孤儿 worker）评估后留。详见 DEVLOG「PR6 大审查」节。
+> **当前状态快照（2026-06-06）**：**PR1–PR6 全部已并入 main**，main 在 **`69ff533`**（Merge PR #8，PR6 Validator+Critic+Orchestrator+SSE）。
+> **后端 agent 流水线端到端跑通**：小说 → chunk → StoryBible → 逐场景(convert+critic+自纠重试) → 汇编 Screenplay → `POST /api/convert` SSE 流式 + YAML。PR1–PR6 全部门禁通过、PR4/PR6 两次大审查均过。
+> main 上 `npm test` = **162 passed | 3 skipped**（PR4/PR5/PR6 三门控冒烟默认 skip），`tsc` 干净，`lint` 干净，`LLM_SMOKE=1` 真端到端冒烟通过（≈43s）。
+> **当前在做 PR7 前端核心**，分支 **`pr7-frontend`**（基于 main `69ff533`，已有「PR6 已合并」状态同步 commit）。**PR7 只走 A 档、不跑大审查**；下次大审查 PR8（锚 `69ff533`）。
 
-**PR6 接续步骤（设计 + 实现 + 大审查全完成，待 merge）**：
-1. 读本文件 + `docs/DEVLOG.md` PR6 节（含「PR6 大审查」子节）+ spec §11（E1–E14 权威增量）。
-2. `git checkout pr6-validator-critic-orchestrator`（HEAD `6cbe061`：状态同步×2 + 设计 spec + 实现 + 大审查修复；`git log` 确认实现 + 大审查修复 commit 都在——**全部完成、门禁已过、不要重写/不要重跑设计或审查**）。
-3. **若用户已放行 merge** → 走 §8 PR 流程：push + `"$GH" pr create --base main` + `pr merge --merge --delete-branch` + 回 main `git pull --ff-only`。
-4. merge 后 → 接 **PR7**（前端核心：输入 + 剧本卡片视图 + YAML 切换 + 导出；消费 `POST /api/convert` 的 SSE 事件契约，事件类型见 `lib/agent/events.ts`）。PR7 是单 PR 轻量门禁批次（只走 A 档），**下次大审查 PR8**（锚 PR6 合并点，覆盖 PR7+PR8）。
+**PR7 接续步骤（PR1–PR6 已合并，开 PR7 前端）**：
+1. 读本文件（§3 架构 / §4 角色分工 / §5 schema / §11 demo 脚本）+ `docs/DEVLOG.md`（全程纪实，尤其 PR6 节）+ `docs/SCHEMA.md`。
+2. **`git checkout pr7-frontend`**（基于 main `69ff533`，已有「PR6 已合并」状态同步 commit——**别重做 PR1–PR6，后端 `lib/agent/*` + `app/api/convert/route.ts` 已就绪**）。
+3. **设计 PR7**：走 gstack（`/gstack-spec` 五段 + codex 冷读），spec 落 `docs/superpowers/specs/`，**不叠 superpowers brainstorming**（本约定）。
+4. 设计定稿 → superpowers TDD 实现前端。
+5. **前端契约**：`POST /api/convert` body `{novel, options?}` → SSE 流，事件类型见 `lib/agent/events.ts`（`stage_start/stage_progress/partial_result/stage_done/final_result/error`，typed 通道 `event: <type>\ndata: <json>`）；末帧 `final_result` 带 `Screenplay` + YAML。schema 类型从 `lib/schema/screenplay.ts` 导入。
+6. **Next 16 注意**：写前端前先读 `node_modules/next/dist/docs/`（本版 API 与训练记忆可能不同）。`app/page.tsx` 当前是脚手架默认页，PR7 替换。
+7. PR7 走每-PR 轻量门禁（test+tsc+TDD 先红+更新 DEVLOG+用户点头），**不跑大审查**（下次 PR8）。**doc 状态同步不直 push main**——作为下个 PR 分支首个 commit 落（分类器会拦直推 main）。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。

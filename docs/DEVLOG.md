@@ -223,3 +223,7 @@
 **修后门禁复跑**：`tsc` exit 0；`lint` 0 warning；`npm test` = **162 passed | 3 skipped**（+5 审查修复测）；`LLM_SMOKE=1` 真端到端冒烟**再次 1 passed（≈43s）**，确认四个修复未伤 happy path。
 
 **可讲的一句话**：「冷上下文大审查在 merge 前逮到一个我所有单测都没覆盖的 bug——自纠循环里，如果 Critic 让我重写场景、而这次重写恰好失败，旧代码会把本来好好的场景替换成失败占位，等于 Critic 把作品改坏了还不吭声。我之所以漏掉，是因为我写的测试都在验证‘我以为会发生的事’，而审查是带着‘还有什么会出错’的冷眼睛读同一段代码。修法五行，但这正是‘每 2 个 PR 一次独立冷读’这条流程纪律存在的理由。」
+
+**合并落点**：用户放行后走 §8 流程，PR **#8** `--merge` 入 main，merge commit **`69ff533`**，分支已删（本地+远程）。至此 **PR1–PR6 全部并入 main，后端 agent 流水线端到端跑通**（小说 → `POST /api/convert` SSE → YAML 剧本）。下一步 = PR7 前端核心（把后端可视化）。
+
+> **流程小坑（记一笔）**：本想 merge 后把「PR6 已合并」状态同步**直接 push 到 main**，被 auto-mode 分类器正确拦下（branch-per-PR：doc 也不该直推默认分支）。改回既有套路——状态同步作为**下个 PR 分支（`pr7-frontend`）的首个 commit**落（与 PR5→PR6 时一致）。期间误用 `git reset --hard` 丢了一次未提交的 doc 编辑、重做了一遍。教训：post-merge 的状态同步走分支，别直推 main。
