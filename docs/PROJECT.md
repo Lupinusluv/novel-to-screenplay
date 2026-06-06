@@ -163,7 +163,12 @@ scenes:
   评审增量全部落地：E1 地点诚实回退（最小 id scoped、明标 `heading unverified`，堵掉「结构有效的语义谎言」）、E2 歧义三级梯（name>alias>scoped>码点序 + `ambiguous_reference`+candidates）、E3 coerce 剔噪、E5 降级台词「」包裹、E6 `SCENE_BODY_CAP` 截断诚实化、I6 全库解析=有效引用。
   **122 passed | 2 skipped**（含 PR5 门控真冒烟，默认 skip；`LLM_SMOKE=1` 实跑 1 passed ≈20s）；`tsc` 干净；`lint` 干净。
   设计 spec + §11 权威增量见 `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`；TDD 实现纪实（含真模型冒烟逼出的样本叙事纠偏、实证 E4 defer 正确）见 `docs/DEVLOG.md` PR5 节。
-- [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。**进行中**：分支 `pr6-validator-critic-orchestrator`（基于 main `42454b7`），设计阶段（gstack spec / 工程评审 / codex 冷读）。**是大审查批次**，`pr create` 前跑 `/code-review`+`/security-review`，diff 基线锚 `f41c257` 覆盖 PR5+PR6（§8.1）。
+- [ ] **PR6 Validator + Critic + Orchestrator + SSE** — ✅ **设计 + TDD 实现完成、每-PR 门禁通过，待大审查 + merge**（未推 origin）。
+  四组件 `lib/agent/validator.ts`（整部门禁 D3）/ `critic.ts`（第二个 LLM agent，语义自评）/ `orchestrator.ts`（`runPipeline` 双层自纠不动点 + 并行 + SSE 事件，+ `pipelineToSSEStream`）+ `events.ts`/`sse.ts`（事件契约 + typed SSE 编码）+ `app/api/convert/route.ts`（Next16 SSE 路由）+ `sceneConverter.ts` 加可选 `revision` 参数（D1）。
+  codex 冷读 6/10→收紧，§11 权威增量 E1–E14 全落地（双层不动点重试 / throw 纳入预算 / 不动点+环检测 / 并行不打乱章节序 / final_result typed 事件 / abort + Next runtime）。
+  **157 passed | 3 skipped**（含 PR6 门控真冒烟，默认 skip）；`tsc` 干净；`lint` 干净；`LLM_SMOKE=1` 真端到端冒烟 1 passed（≈48s，9 场景全流程）。
+  设计 spec 见 `docs/superpowers/specs/2026-06-06-pr6-validator-critic-orchestrator-design.md`；实现纪实见 `docs/DEVLOG.md` PR6 节。
+  **下一步 = 大审查批次**：`/code-review`+`/security-review` 冷读 `git diff f41c257...HEAD`（覆盖 PR5+PR6）→ 用户点头 → push + PR + merge（§8）。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
 - [ ] **PR8 Agent 可视化 + 溯源 + 打磨** — 进度时间线随 SSE 点亮、场景溯源、空/错状态、README + demo 脚本。
 
@@ -230,18 +235,16 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 ## 10. /clear 后如何接续
 
 > **当前状态快照（2026-06-06）**：**PR1–PR5 全部已并入 main**，main 在 **`42454b7`**（Merge PR #7，PR5 Scene Converter）。
-> **当前在做 PR6 Validator + Critic + Orchestrator + SSE**：分支 **`pr6-validator-critic-orchestrator`**（基于 main `42454b7`），**设计阶段**（gstack spec / 工程评审 / codex 冷读）进行中、spec 尚未落盘。
-> main 上 `npm test` = **122 passed | 2 skipped**（PR4+PR5 两门控冒烟默认 skip），`tsc` 干净，`lint` 干净。
+> **PR6 Validator + Critic + Orchestrator + SSE：设计 + TDD 实现全部完成、每-PR 门禁通过，待大审查 + merge。** 分支 **`pr6-validator-critic-orchestrator`**（基于 main `42454b7`，3 commit：状态同步 + 设计 spec + 实现；**未推 origin、未 merge**）。
+> 分支上 `npm test` = **157 passed | 3 skipped**（PR4/PR5/PR6 三门控冒烟默认 skip），`tsc` 干净，`lint` 干净，`LLM_SMOKE=1` 真端到端冒烟通过（≈48s）。
 > **PR6 是大审查批次**（§8.1）：`pr create` 前必跑 `/code-review`+`/security-review`，diff 基线锚 **`f41c257`**（`git diff f41c257...HEAD`，覆盖 PR5+PR6；直接用 `main...` 会漏掉已并入 main 的 PR5）。
 
-**PR6 接续步骤（设计进行中）**：
-1. 读本文件（§3 数据流 / §4 角色分工 self-correction 闭环 / §5 schema）+ `docs/DEVLOG.md`（PR4/PR5 纪实，了解地基）。
-2. `git checkout pr6-validator-critic-orchestrator`（基于 main `42454b7`）。
-3. 继续 PR6 设计：走 gstack（`/gstack-spec` 五段 → `/gstack-plan-eng-review` + codex 冷读），spec 落 `docs/superpowers/specs/`。**不叠 superpowers brainstorming**（AGENTS.md 约定）。
-4. 设计定稿 → TDD（superpowers）实现：`lib/agent/validator.ts`（确定性 zod + 引用完整性）、`lib/agent/critic.ts`（第二个纯 LLM agent，语义自评，回灌 Converter 重试）、`lib/agent/orchestrator.ts`（串联 + 自纠重试循环 + 发 SSE 事件）、`app/api/convert/route.ts`（SSE 路由）；端到端跑通 sample。
-5. 复用已合并地基：`chunker.ts` / `storyBible.ts`（稳定 id + provenance）/ `sceneConverter.ts`（已含 issues 二分 + `checkReferentialIntegrity`）。重试预算每场景各默认 2 次、超限打 `needs_review` 不阻塞继续（§4）。
-6. **大审查（PR6 必跑）**：`pr create` 前 `/code-review`+`/security-review` 冷读 `git diff f41c257...HEAD`（覆盖 PR5+PR6），结论交用户。
-7. 门禁过 + 用户点头 → 走 §8 PR 流程 merge → 接 PR7（前端核心）。
+**PR6 接续步骤（实现完成、待大审查 + merge）**：
+1. 读本文件 + `docs/DEVLOG.md` PR6 节 + spec §11（E1–E14 权威增量）。
+2. `git checkout pr6-validator-critic-orchestrator`（HEAD `d08fd7c`：状态同步 + 设计 spec + 实现 commit；`git log` 确认实现 commit 在——**实现已完成、门禁已过、不要重写/不要重跑设计**）。
+3. **大审查（PR6 必跑，尚未跑）**：派 `/code-review`（正确性/复用/简化）+ `/security-review`（安全面）冷读 `git diff f41c257...HEAD`（覆盖 PR5+PR6；**基线必须锚 `f41c257`**，用 `main...` 会漏掉已并入 main 的 PR5），结论交用户；按发现修。
+4. 大审查过 + 用户点头 → 走 §8 PR 流程：push + `pr create --base main` + `pr merge --merge --delete-branch` + 回 main `git pull --ff-only`。
+5. merge 后 → 接 **PR7**（前端核心：输入 + 剧本卡片视图 + YAML 切换 + 导出；消费 `POST /api/convert` 的 SSE 事件契约）。PR7 是单 PR 轻量门禁批次，下次大审查 PR8。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
