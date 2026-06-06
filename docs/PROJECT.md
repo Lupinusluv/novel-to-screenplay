@@ -158,7 +158,12 @@ scenes:
 > - `assignIds` 纯数字 romanization 与位置兜底可撞 id（`char_2`/`char_2_2`），唯一性仍保持；LLM 给拼音 hint 几乎不可能纯数字，惰性。
 > - `computeProvenance` O(N×C) 全扫描，3 章无感，全本输入下可换倒排索引。
 > - char/loc 四 schema + 双胞胎管线重复（spec 已接受对称重复）；如第三个对称实体出现再抽 `EntityBase`/`buildTable()` 泛化。
-- [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。**设计 + 评审已完成（2026-06-06，ENG CLEARED）**，实现待 TDD：见 spec `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`（§11 权威增量 + T1–T7 任务）；分支 `pr5-scene-converter` 已有 3 设计 commit（HEAD `bbe2e50`）。
+- [x] **PR5 Scene Converter** — ✅ **实现完成、每-PR 门禁通过、待用户点头 merge**（尚未推 origin / 未建 PR）。
+  `lib/agent/sceneConverter.ts`：单候选→单 `Scene`，LLM 只说名字、代码权威解析 name→id（D1/D2）；结构垃圾抛错 vs 引用未命中走 issues 二分（D6）。
+  评审增量全部落地：E1 地点诚实回退（最小 id scoped、明标 `heading unverified`，堵掉「结构有效的语义谎言」）、E2 歧义三级梯（name>alias>scoped>码点序 + `ambiguous_reference`+candidates）、E3 coerce 剔噪、E5 降级台词「」包裹、E6 `SCENE_BODY_CAP` 截断诚实化、I6 全库解析=有效引用。
+  **122 passed | 2 skipped**（含 PR5 门控真冒烟，默认 skip；`LLM_SMOKE=1` 实跑 1 passed ≈20s）；`tsc` 干净；`lint` 干净。
+  设计 spec + §11 权威增量见 `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`；TDD 实现纪实（含真模型冒烟逼出的样本叙事纠偏、实证 E4 defer 正确）见 `docs/DEVLOG.md` PR5 节。
+  分支 `pr5-scene-converter`：3 个设计 commit + 实现 commit（**未推 origin、未 merge**）。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
 - [ ] **PR8 Agent 可视化 + 溯源 + 打磨** — 进度时间线随 SSE 点亮、场景溯源、空/错状态、README + demo 脚本。
@@ -226,23 +231,18 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 ## 10. /clear 后如何接续
 
 > **当前状态快照（2026-06-06）**：**PR1–PR4 全部已并入 main**，main 在 **`f41c257`**（Merge PR #6）。
-> **PR5 Scene Converter 进行中：设计已完成、gstack 工程评审 + codex 冷读已过（ENG CLEARED），尚未写实现代码。**
-> 分支 **`pr5-scene-converter`** 已有 3 个**设计 commit**（HEAD `bbe2e50`，领先 main，**未推 origin、未 merge**）：
-> spec 落盘 → 评审增量（§11）→ 工作流约定变更。spec = `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`
-> （**§11 是权威增量**：E1 地点回退诚实化 / E2 歧义三级梯 / E3 D6 加 coerce / E4 语料重拉拆出 PR5 / E5 降级引号 / E6 SCENE_BODY_CAP + 11 fold-in；末尾 **T1–T7 TDD 任务清单**）。
-> 当前 `npm test` = **74 passed | 1 skipped**，`tsc` 干净（实现未动）。**PR5 不是审查批次**（下次大审查在 PR6，§8.1）。
+> **PR5 Scene Converter：设计 + 评审 + TDD 实现全部完成，每-PR 门禁通过，等用户点头 merge。**
+> 分支 **`pr5-scene-converter`**（领先 main，**未推 origin、未 merge**）：3 个**设计 commit** + **实现改动**（`lib/agent/sceneConverter.ts` 全新 + `sceneConverter.test.ts` 48 测 + `sceneConverter.smoke.test.ts` 门控冒烟 + `screenplay.ts` needs_review 注释 I5）。
+> spec = `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`（**§11 权威增量**：E1 地点诚实回退 / E2 歧义三级梯 / E3 coerce / E4 语料拆出 / E5 降级引号 / E6 body cap + I1–I11；末尾 T1–T7 已全部实现）。
+> 当前 `npm test` = **122 passed | 2 skipped**（PR4+PR5 两门控冒烟默认 skip），`tsc` 干净，`lint` 干净，`LLM_SMOKE=1` 真冒烟实跑通过。**PR5 不是审查批次**（下次大审查 PR6，§8.1）。
+> **下一步**：用户放行后 → push + 建 PR + merge（流程见 §8）；然后接 **PR6**（Validator+Critic+Orchestrator+SSE，**是大审查批次**，diff 基线锚 `f41c257` 覆盖 PR5+PR6）。
 
-1. 读本文件 + `docs/DEVLOG.md` + **PR5 spec（重点 §11 + T1–T7）**。
-2. **接已有分支、不要回 main 重开**：`git checkout pr5-scene-converter`（HEAD 应为 `bbe2e50`，3 个设计 commit 已在）。
-   **设计已定稿、评审已过——不要重跑设计 / brainstorming / 评审**，直接接 TDD 实现。
-3. **用 superpowers 的 TDD 流程从 spec §11「实现任务 T1」起逐个实现**（先红后绿）。
-   （**工作流约定 2026-06-06 变更**：架构/规划/设计 = gstack 一套；开发/实现 = superpowers。设计阶段已走完。）
-   复用 PR4 地基：`StoryBible`（`characters`/`locations` 带稳定 id + `provenance` 侧表）= 跨章共享记忆，
-   场景转换强制引用 Bible id（`checkReferentialIntegrity`）；`provenance[id]→章号` 按章圈 cast。
-4. **样本决策已定**（简体 + 红楼回3/6/7），但**语料重拉已拆出 PR5**（§11 E4）：PR5 冷烟复用现有繁體前三回样本，
-   简体回3/6/7 迁移作独立预备步骤、demo（PR7/8）前做。
-5. 跑齐 §8.1 每-PR 门禁（`npm test`+`npx tsc --noEmit` 贴原始输出、TDD 先红、更新 DEVLOG、用户点头才 merge）。
-   **PR5 不跑大审查**（按 §8.1 节奏锚点表，下次是 PR6，基线锚到 PR4 合并点 `f41c257`）。
+**若 PR5 尚未 merge（接续实现已完成的分支）**：
+1. 读本文件 + `docs/DEVLOG.md` PR5 节 + spec §11。
+2. `git checkout pr5-scene-converter`——**实现已完成、门禁已过、不要重写**。`git log` 确认有实现 commit；若只看到 3 个设计 commit 说明实现 commit 未落，按 spec §11 T1–T7 接 TDD（实现已在工作区/已 commit 则跳过）。
+3. 复用 PR4 地基：`StoryBible`（稳定 id + `provenance` 侧表）= 跨章共享记忆；场景转换强制引用 Bible id（`checkReferentialIntegrity` 防御自检）。
+4. **样本**：PR5 冷烟复用现有繁體前三回样本（E4）；简体回3/6/7 语料重拉是 demo（PR7/8）前的独立预备步骤——**真冒烟已实证现样本对白稀、是 E4 defer 的正确性佐证**（见 DEVLOG PR5 节）。
+5. 走 §8 PR 流程：用户点头 → push → `pr create` → merge。**PR5 不跑大审查**（下次 PR6，锚 `f41c257`）。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
