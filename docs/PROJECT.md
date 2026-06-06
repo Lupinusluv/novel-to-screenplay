@@ -169,13 +169,14 @@ scenes:
   **大审查已过**（`/code-review`+`/security-review` 冷读 `f41c257..69ff533` 覆盖 PR5+PR6）：code-review 5 条（1 真 correctness「语义臂吞占位场景」+ 4 健壮性/LOW），security 0 条；#1–#4 已 TDD 修掉，#5 评估后留。
   **162 passed | 3 skipped**（含 PR6 门控真冒烟，默认 skip）；`tsc` 干净；`lint` 干净；`LLM_SMOKE=1` 真端到端冒烟 1 passed（≈43s，9 场景全流程）。
   设计 spec 见 `docs/superpowers/specs/2026-06-06-pr6-validator-critic-orchestrator-design.md`；实现 + 大审查纪实见 `docs/DEVLOG.md` PR6 节。
-- [x] **PR7 前端核心** — ✅ **实现完成、门禁过、PR #9 已开、待你拍板 merge**（分支 `pr7-frontend`，commit `3a19e32`）。
+- [x] **PR7 前端核心** — ✅ **已并入 main（#9，merge commit `5d726af`）**（分支 `pr7-frontend`，已删）。
   纯逻辑全抽到 `lib/`（node 单测）：`lib/sse/parseSSE.ts`（有状态 SSE 帧解析器，坏帧抛 typed `SSEProtocolError`）/ `lib/client/pipelineState.ts`（纯 reducer，E1 error 两类二分 + E2 场景自然数序）/ `lib/client/sseClient.ts`（`fetch`+`getReader`+`TextDecoder` 流式，E5 中文多字节跨 chunk + E3 全失败面收敛 + AbortError 静默）/ `lib/client/filename.ts`（导出名 sanitize E13）。
   组件 `app/components/`：`ConverterApp`（runId 隔离 E4 + 取消）/ `InputPanel` / `AgentTimeline`（4 stage 随 SSE 点亮）/ `ScreenplayView`（卡片↔YAML 切换）/ `SceneCard` / `YamlView` / `ExportButton`；`app/api/sample/route.ts`（GET 懒读样本 D3）；`app/page.tsx` 替换脚手架。
   测试栈：`@testing-library/react`+`jsdom`+`@vitejs/plugin-react`，vitest 用内置 `resolve.tsconfigPaths`（替掉 `vite-tsconfig-paths`）+ 手动 `afterEach(cleanup)`（globals 关）。
   设计走 gstack（spec `docs/superpowers/specs/2026-06-06-pr7-frontend-design.md`，codex 冷读 13 条 E1–E13 全落地）。**只读 + 导出**（编辑/溯源弹层/空错态打磨留 PR8）。
   **209 passed | 3 skipped**（+47，既有 162 不回归）；`tsc` 干净；`lint` 干净。**E11 真浏览器实跑**（Chrome dev server + playwright MCP）：选示例→转换，Network 确认 `GET /api/sample 200`+`POST /api/convert 200`(SSE)，时间线逐步点亮（场记✓→设定集✓→场景编剧 9/9→导演✓）、9 卡片流式出现、切 YAML（自然数序）、导出就位，真 DeepSeek ≈30s。**PR7 只走 A 档、不跑大审查。** 实现纪实见 `docs/DEVLOG.md` PR7 节。
-- [ ] **PR8 Agent 可视化深化 + 溯源 + 打磨** — 场景溯源弹层/跳回原文、卡片内联编辑或 YAML 回灌、空/错状态视觉打磨、README + demo 脚本。**下次大审查节点**（`/code-review`+`/security-review` 锚 `69ff533`，覆盖 PR7+PR8）。
+- [ ] **PR8 最后阶段打磨（溯源 + 编辑 + 空错态）** — 🚧 **开工中**（分支 `pr8-traceability-polish`，基于 main `5d726af`；首个 commit = PR7 已合并状态同步）。范围（2026-06-06 用户拍板，从原 PR8 拆出 demo 到 PR9）：① 场景溯源弹层/跳回原文（信任闭环，demo 第 5 步）；② **YAML 回灌编辑**（用户在 YAML 视图改 → 解析 + zod 校验 → 回灌状态；复用 `lib/schema/yaml.ts`+`screenplay.ts`，与「纯数据」架构最契合，demo 第 4 步）；③ 空/错状态视觉打磨。**下次大审查节点**（`/code-review`+`/security-review` 锚 `69ff533`，覆盖 PR7+PR8）。
+- [ ] **PR9 README + demo 脚本（收尾）** — README（架构图/跑法/Schema 设计论证索引/agent 四能力）+ 录屏 demo 脚本定稿（见 §11）。**最后做**；docs/脚本为主、低风险，只走 A 档轻量门禁。
 
 ---
 
@@ -237,18 +238,18 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-06）**：**PR1–PR6 全部已并入 main**，main 在 **`69ff533`**（Merge PR #8）。**PR7 前端核心已实现完成、门禁全过、PR #9 已开、待用户拍板 merge**——分支 **`pr7-frontend`**，最新 commit **`3a19e32`**（前端实现）在「PR6 已合并」同步 commit `deed3be` 之上。
+> **当前状态快照（2026-06-06）**：**PR1–PR7 全部已并入 main**，main 在 **`5d726af`**（Merge PR #9）。**PR8（Agent 可视化深化 + 溯源 + 打磨）开工中**——分支 **`pr8-traceability-polish`**（基于新 main），本分支首个 commit = 本次「PR7 已合并」状态同步。
 > **现在是全栈端到端跑通**：小说 → chunk → StoryBible → 逐场景(convert+critic+自纠重试) → 汇编 → `POST /api/convert` SSE → **前端实时时间线 + 剧本卡片/YAML + 导出**。
-> `pr7-frontend` 上 `npm test` = **209 passed | 3 skipped**（+47 前端测，既有 162 不回归），`tsc` 干净，`lint` 干净；**E11 真浏览器实跑过**（Chrome dev server + playwright MCP，时间线逐步点亮 + 卡片流式 + YAML + 导出，真 DeepSeek ≈30s）。
-> **PR7 只走 A 档、未跑大审查**；**下次大审查 = PR8**（锚 `69ff533`，覆盖 PR7+PR8）。
+> main 上 `npm test` = **209 passed | 3 skipped**（PR7 +47 前端测，既有 162 不回归），`tsc` 干净，`lint` 干净；PR7 期间 **E11 真浏览器实跑过**（Chrome dev server + playwright MCP，时间线逐步点亮 + 卡片流式 + YAML + 导出，真 DeepSeek ≈30s）。
+> **PR8 是大审查节点**（锚 `69ff533`，覆盖 PR7+PR8），`pr create` 前必跑。
 
-**接续步骤（PR7 已实现、PR #9 待 merge）**：
-1. 读本文件（§6 路线图看 PR7 已完成项 / §3 架构 / §4 角色分工 / §11 demo 脚本）+ `docs/DEVLOG.md`（PR7 节：架构分层 + codex 13 条 + 测试栈踩坑）+ `docs/SCHEMA.md`。
-2. **`git checkout pr7-frontend`**——**别重做任何已完成的事**：PR1–PR6 后端在 main，PR7 前端已 commit 在本分支（`app/components/*`、`lib/sse/*`、`lib/client/*`、`app/api/sample/route.ts`、替换后的 `app/page.tsx`）。
-3. **第一件事 = 决定是否 merge PR #9**：门禁已全过、用户已点头提交并开 PR。若用户放行 → `"$GH" pr merge 9 --merge --delete-branch` → `git checkout main && git pull --ff-only`。
-4. **merge 后**：把「PR7 已合并」状态同步**作为下个分支 `pr8-xxx`（基于新 main）的首个 commit** 落，**不直 push main**（分类器会拦，PR6 时踩过）。同步要点：main 推进到 PR #9 的 merge commit、PR7 完成。
-5. **再开 PR8**：走 gstack 设计（`/gstack-spec` + codex 冷读，不叠 superpowers brainstorming）→ superpowers TDD 实现（场景溯源弹层/跳回原文、编辑能力、空错态打磨、README+demo 脚本，见 §6 PR8 行）。
-6. **PR8 是大审查节点**：`pr create` 前派 `/code-review`+`/security-review` 冷读 `git diff 69ff533...<pr8-head>`（覆盖 PR7+PR8），结论交用户。
+**接续步骤（PR8 开工中，PR7 已合并在 main）**：
+1. 读本文件（§6 路线图看 PR8 行 / §3 架构 / §4 角色分工 / §11 demo 脚本）+ `docs/DEVLOG.md`（PR7 节：架构分层 + codex 13 条 + 测试栈踩坑）+ `docs/SCHEMA.md`。
+2. **`git checkout pr8-traceability-polish`**——**别重做任何已完成的事**：PR1–PR7 全在 main `5d726af`；本分支已落「PR7 已合并」状态同步 commit。
+3. **PR8 设计先行**：走 gstack（`/gstack-spec` + codex 冷读，不叠 superpowers brainstorming），把 PR8 范围拆成可执行 spec。
+4. **superpowers TDD 实现** PR8 范围（demo/README 已拆到 PR9）：场景溯源弹层/跳回原文、**YAML 回灌编辑**（改 YAML → 解析+zod 校验 → 回灌）、空/错状态视觉打磨（见 §6 PR8 行）。
+5. **PR8 是大审查节点**：`pr create` 前派 `/code-review`+`/security-review` 冷读 `git diff 69ff533...<pr8-head>`（覆盖 PR7+PR8），结论交用户。
+6. **用户点头才 merge**。
 7. **前端契约（备查）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧，事件类型见 `lib/agent/events.ts`；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。内置示例走 `GET /api/sample`。Next 16 写前端前读 `node_modules/next/dist/docs/`。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
