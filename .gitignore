@@ -41,3 +41,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .gstack/
+
+# playwright MCP QA artifacts (snapshots/screenshots from dev-server dogfooding)
+.playwright-mcp/

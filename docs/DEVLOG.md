@@ -227,3 +227,32 @@
 **合并落点**：用户放行后走 §8 流程，PR **#8** `--merge` 入 main，merge commit **`69ff533`**，分支已删（本地+远程）。至此 **PR1–PR6 全部并入 main，后端 agent 流水线端到端跑通**（小说 → `POST /api/convert` SSE → YAML 剧本）。下一步 = PR7 前端核心（把后端可视化）。
 
 > **流程小坑（记一笔）**：本想 merge 后把「PR6 已合并」状态同步**直接 push 到 main**，被 auto-mode 分类器正确拦下（branch-per-PR：doc 也不该直推默认分支）。改回既有套路——状态同步作为**下个 PR 分支（`pr7-frontend`）的首个 commit**落（与 PR5→PR6 时一致）。期间误用 `git reset --hard` 丢了一次未提交的 doc 编辑、重做了一遍。教训：post-merge 的状态同步走分支，别直推 main。
+
+## PR7 · 前端核心：输入 + 实时 agent 时间线 + 剧本卡片/YAML + 导出（2026-06-06）✅
+
+> 设计走 gstack（`/gstack-spec` 五段 + codex 冷读，spec 落 `docs/superpowers/specs/2026-06-06-pr7-frontend-design.md`，**不叠 superpowers brainstorming**，AGENTS.md 约定）；实现交 superpowers TDD。**PR7 只走每-PR 轻量门禁，不跑大审查**（下次 PR8，锚 `69ff533`）。
+
+**做了什么**：把 PR1–PR6 端到端跑通的后端**第一次可视化**。`app/page.tsx` 从 create-next-app 脚手架换成消费 `POST /api/convert` SSE 的完整前端——输入区（粘贴/上传 .txt/内置示例）→ 点「转换」→ **agent 流水线时间线随 SSE 实时点亮**（demo 主轴）→ 剧本卡片流式出现 + YAML 源码切换 + 导出 `.yaml`。
+
+**架构分层（关键 taste call：纯逻辑全抽到 `lib/`，node 环境单测）**：
+- `lib/sse/parseSSE.ts`：有状态 SSE 帧解析器（喂**已解码字符串**、按 `\n\n` 切帧、半帧留 buffer），坏 JSON/空 data 抛 typed `SSEProtocolError`（E6）。
+- `lib/client/pipelineState.ts`：纯 reducer，6 类事件 → UI 状态（4 stage + 场景累积 + 权威覆盖）。
+- `lib/client/sseClient.ts`：`fetch`+`getReader`+`TextDecoder` 流式客户端（POST 无 `EventSource`），把所有失败面收敛成 1 条 error 事件。
+- `lib/client/filename.ts`：导出文件名 sanitize（Windows 非法字符，E13）。
+- React 组件（`app/components/`）：`ConverterApp`（唯一持流逻辑）/ `InputPanel` / `AgentTimeline` / `ScreenplayView` / `SceneCard` / `YamlView` / `ExportButton`；`app/api/sample/route.ts` GET 懒读样本（D3）。
+
+**codex 冷读（gpt-5.5，SCORE 7/10）逮到 13 条盲点，全采纳**——最能讲的几条：
+- **E1 — `error` 帧分两类**：`scenes` 阶段带 `sceneId` 的是**场景级 warning**（后端 placeholder 后继续），不可置全局 error；只有 fatal（无 sceneId / 非 scenes 阶段 / 流断没收到 `final_result`）才 `status="error"`。reducer 据此二分，`final_result` 一律权威覆盖为 `done`。
+- **E2 — 场景排序用自然数序，禁字典序**：id 形如 `scene_${ch}_${i}`，字典序会把 `scene_1_10` 排到 `scene_1_2` 前。reducer 按数字分量比较。
+- **E4 — 并发 `runId` 隔离**：用户连点转换/选示例再转，旧 stream 的 late event 会污染新 reducer。`ConverterApp` 每次开转换 `++runId` + 新 `AbortController` + 先 abort 旧的；`onEvent` 丢弃非当前 runId 的事件。复用为「取消」按钮（demo 安全阀）。
+- **E5 — UTF-8 多字节中文跨字节边界必测**：`TextDecoder("utf-8")` 的 `decode(value,{stream:true})` 缓冲半个字、流末 `decode()` flush；否则中文/YAML 文本损坏。
+- **E10 — client 边界纪律**：`lib/sse/*`、`lib/client/*` 只 `import type` from `schema`/`events`，严禁 import `lib/agent/*` 运行时或 fs/env（否则服务端代码进客户端 bundle）。`InputPanel` 的 `MAX_NOVEL_CHARS` 因此**复制**而非 import orchestrator。
+
+**TDD 证据（先红后绿，逐单元）**：纯逻辑 `parseSSE`（7）→ `pipelineState`（10）→ `sseClient`（9，含 E5 多字节拆 chunk、E3 全失败面收敛、AbortError 静默、流断未见 final 合成 error）→ `filename`（5）；测试栈接入后组件 `SceneCard`（2）/`AgentTimeline`（2，断言 active + "3 / 9"）/`ExportButton`（1，spy `createObjectURL`+下载名 sanitize）/`InputPanel`（4）/`ScreenplayView`（3，卡片↔YAML 切换）/`ConverterApp`（2，**runId 隔离 + 取消回 idle**）；sample 路由（1，真读盘）+ page（1，无脚手架文案）。每个都先看 RED（module 不存在 / 行为缺失）再最小实现到绿。
+
+**测试栈接入（D4，踩坑记一笔）**：装 `@testing-library/react`+`/dom`+`/jest-dom`+`jsdom`+`@vitejs/plugin-react`，vitest 配 `plugins:[react()]`、组件测试用 `// @vitest-environment jsdom` docblock（lib 单测仍 node，互不干扰）。两个真坑：① spec 原列的 `vite-tsconfig-paths` 被本版 Vite 警告「已内置」——改用 `resolve.tsconfigPaths:true` 并卸载插件，保持输出零 warning；② testing-library 自动 cleanup 只在 `globals:true` 时自注册，而本仓约定 globals 关（既有 lib 测试显式 import）——于是在 `vitest.setup.ts` 手动 `afterEach(cleanup)`（node 测试里无挂载，no-op）。
+
+**门禁证据**：`npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净（0 warning，修了一处 unused const）；`npm test` = **209 passed | 3 skipped**（+47 前端测，既有 162 不回归）。
+- **真浏览器实跑（E11，demo 主轴硬约束）**：Chrome dev server（playwright MCP 驱动）选内置示例（繁體前三回，4546 字）→ 转换 → Network 确认 `GET /api/sample 200` + `POST /api/convert 200`（SSE）；时间线**逐步点亮**（场记✓→设定集✓→场景编剧 8/9→9/9→导演✓，非一次性刷出）、9 张场景卡片**流式出现**、切 YAML 看到权威源码（场景自然数序 `scene_1_1…scene_3_4`）、导出按钮就位。真 DeepSeek 端到端 ≈30s 跑通。
+
+**可讲的一句话**：「前端最容易写成‘点按钮、等 40 秒、啪一下出结果’——那等于把流式后端白做了。所以 PR7 的主轴是 agent 时间线随 SSE 实时点亮，让评审**看见**四个 agent 在干活。技术上被一个事实逼着走对路：`POST` 不能用原生 `EventSource`，只能 `fetch`+手动 reader+`TextDecoder` 按 `\n\n` 切帧——而 codex 冷读一眼点出两个我不会自己想到的坑：中文多字节会在字节边界被拆成两个 chunk（不 `stream:true` 就乱码），以及后端的 scene 级 error 其实是‘这一场没救了但整部继续’的 warning、不能拿来杀掉整个转换。这两条都写进了单测，最后用真浏览器的 Network 面板确认 chunk 是真的逐步到达、UI 是真的逐步更新，而不是单测里的桩。」
