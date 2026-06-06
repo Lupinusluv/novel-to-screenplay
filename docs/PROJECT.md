@@ -135,14 +135,16 @@ scenes:
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
 - [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
 - [x] **PR3 Chunker + 示例小说** — ✅ 完成。`lib/agent/chunker.ts`(确定性分章/两遍分场景：分隔行+大空行+转场提示词) + `samples/honglou-meng-ch1-3.txt`(公有领域《红楼梦》前三回真实文本)；13 测试(含真实样本冒烟 + 锚定正则拒绝正文「第四回中…」回归)。
-- [x] **PR4 StoryBible Curator** — 🔨 **TDD 实现完成，待大审查 + merge**。分支 `pr4-storybible`（**尚未并入 main**）。
+- [x] **PR4 StoryBible Curator** — 🔨 **TDD 实现完成 + 大审查已过，待 merge**。分支 `pr4-storybible`（**尚未并入 main**）。
   `lib/agent/storyBible.ts`：map-reduce + 确定性 id 后处理（`assignIds`/`sanitizeSlug`）、人物**与地点**别名合并、
   `provenance` 侧表（R6）、中间层 zod（I1）+ 强校验 `validateStoryBible`（I2）；`LocationSchema.aliases`（R5）、
-  `loadLLMConfigFromEnv` DeepSeek 回退（I8）。**74 测试**（含 1 门控真 LLM 冒烟，默认 skip）；`tsc` 干净。
+  `loadLLMConfigFromEnv` DeepSeek 回退（I8）。**75 测试**（含 1 门控真 LLM 冒烟，默认 skip）；`tsc` 干净。
   设计依据见 `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md §10`（R1–R6 + I1–I8）。
   实现纪实与真数据逼出的修复见 `docs/DEVLOG.md` PR4 实现纪实节。
   （**门控决策**：真冒烟用 `LLM_SMOKE=1` 显式 opt-in + key 双条件，默认/本机/CI 均 skip，合 §8.1。）
-  （**大审查锚点**：`pr create` 前跑 `/code-review`+`/security-review`，diff 基线锚 `dd47ed3`，覆盖 PR3+PR4。）
+  （**大审查已跑**：`/code-review`+`/security-review` 冷读 `dd47ed3..HEAD`。安全零发现；正确性 1 中危已修——
+  分章正则强制空格分隔符会漏「标题紧贴」章回，改为「分隔符可选 + 标题禁含句读」的标点护栏，TDD 先红后绿，
+  原 `第四回中…` 假标题回归仍绿。低危发现 defer，见下方「PR4 审查 defer 项」。）
 
 > **待议决策（defer 到对应 PR，勿遗忘）**：
 > - **示例小说改用简体**（便于 demo 展示）。当前 `samples/honglou-meng-ch1-3.txt` 是繁體红楼梦；换简体样本时同步更新 chunker 的繁體 cue 冒烟测试（繁體 cue 支持可保留作健壮性）。—— 到 PR5 / demo 阶段定。
@@ -150,6 +152,12 @@ scenes:
 > - **LLM 配置缺口**（已在 PR4 spec 定方案，实现待落地）：环境仅有 `DEEPSEEK_API_KEY`。方案 = `loadLLMConfigFromEnv`
 >   显式 `LLM_*` 优先、三者全缺时回退 DeepSeek（baseURL `https://api.deepseek.com`、model `deepseek-chat`）；
 >   **部分显式 + DeepSeek key → 报缺失项错、不回退**（spec §10 I8）。单测走 fixture 不烧 key。
+>
+> **PR4 审查 defer 项（低危，记录不改，按需在后续 PR 处理）**：
+> - **分章正则若再现误判 → 上「序号单调」判据**（审查时的备选方案 2）：章回号须续上序列才认作标题，比标点护栏更稳健但要重写收集逻辑、处理楔子/序。当前标点护栏对「`第十回里的故事` 这类无标点短散文」仍可能误判——真出现再升级。
+> - `assignIds` 纯数字 romanization 与位置兜底可撞 id（`char_2`/`char_2_2`），唯一性仍保持；LLM 给拼音 hint 几乎不可能纯数字，惰性。
+> - `computeProvenance` O(N×C) 全扫描，3 章无感，全本输入下可换倒排索引。
+> - char/loc 四 schema + 双胞胎管线重复（spec 已接受对称重复）；如第三个对称实体出现再抽 `EntityBase`/`buildTable()` 泛化。
 - [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。

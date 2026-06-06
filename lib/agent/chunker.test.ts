@@ -59,6 +59,30 @@ describe("chunkNovel · chapters", () => {
     ]);
   });
 
+  it("detects a heading whose title is attached with no separating space", () => {
+    // Some public-domain e-texts concatenate marker and title with no space:
+    // `第一回甄士隱…` instead of `第一回　甄士隱…`. The marker shape is
+    // unambiguous, so the title is everything after it — as long as it isn't a
+    // prose continuation (those carry sentence punctuation; see next test).
+    const raw = [
+      "第一回甄士隱夢幻識通靈　賈雨村風塵懷閨秀",
+      "此開卷第一回也。",
+      "第二回賈夫人仙逝揚州城",
+      "卻說封肅聞得公差傳喚。",
+    ].join("\n");
+    const { chapters } = chunkNovel(raw);
+    expect(chapters).toHaveLength(2);
+    expect(chapters[0]).toMatchObject({
+      marker: "第一回",
+      title: "甄士隱夢幻識通靈　賈雨村風塵懷閨秀",
+    });
+    expect(chapters[1]).toMatchObject({
+      marker: "第二回",
+      title: "賈夫人仙逝揚州城",
+    });
+    expect(chapters[0].body).toContain("此開卷第一回也");
+  });
+
   it("does not treat an in-text reference like '第四回中…' as a heading", () => {
     // Real pitfall from 红楼梦 source: a body line begins with `第四回中既將…`.
     // The anchored heading shape (marker then whitespace+title or EOL) rejects
