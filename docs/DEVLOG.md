@@ -203,3 +203,23 @@
 **与 spec 的偏差（记录）**：① 事件类型独立成 `events.ts`（见上，避免循环）；② `validateScene` 作为**独立可测工具**导出、未塞进 orchestrator 循环——因为 `convertScene` 自身的 `sceneReferentialCheck` 已对 dangling 引用 throw（被 orchestrator 的 E2 路径接住），再跑一遍 validateScene 是无法触发的死分支，TDD 下不写无测试的分支。`validateScreenplay` 则在 T12 作为整部门禁被实测。
 
 **可讲的一句话**：「外部模型冷读救了这个 PR 的命门——我把自纠循环写成‘先修引用、再修语义’两段，看着合理，但 codex 一眼看穿：Critic 改完场景没人再查引用，等于语义臂能把我刚修好的引用又改坏。修法是把它变成‘每次改写后都重新收敛到确定性不动点’的双层循环，再加不动点早停和环检测，这样 temperature=0 的重试既不会白跑、也不会无限振荡。然后真端到端冒烟 48 秒跑通九个场景的转换+审稿+重试，证明四个 agent 真的协同工作，不只是单测里的桩。」
+
+### PR6 大审查（`/code-review` + `/security-review`，冷读 `f41c257..HEAD` 覆盖 PR5+PR6）
+
+> §8.1 节奏批次（PR4 后第二个节点）。基线**必须锚 PR4 合并点 `f41c257`**（PR5 已并入 main，用 `main...` 会漏掉 PR5）。
+
+- **`/code-review`（high）**：5 条——1 真 correctness + 1 健壮性/成本 + 3 LOW。
+- **`/security-review`**：0 条（严格门槛下无 HIGH/MED；输入无上限 / 信任客户端 options 这类属 DoS/资源，按 security 排除规则归到 code-review；prompt 注入、env 可信、路径-only SSRF 均排除）。
+
+**逮到的真 bug（最值得讲）#1**：自纠循环的**语义臂会吞下占位场景**。确定性臂产出一个干净场景 S（进了 Critic），Critic 报 major，语义重试时这次 convert 反复吐坏 JSON → `convergeDeterministic` 返回 errored 占位 P；原代码 `scene = re.scene` **没查 `re.errored`**，于是把好场景 S 替换成占位 P（内容丢失），且**不发 error 事件**——**Critic 把好场景改成了垃圾，还悄无声息**。这正是冷上下文审查的价值：单测全绿，但测试编码的是我自己的假设，没覆盖「语义改写本身失败」这条路径。
+
+**四条全部 TDD 修掉（先红后绿）**：
+- **#1（MED 正确性）**：语义臂 `if (re.errored) break`——失败的修订不替换、保留当前最佳场景（仍打 needs_review）。新增红测：初始干净、所有 revision 调用抛错 → 断言最终场景是干净 S（非占位）+ needs_review + 无 spurious error 事件。
+- **#2（MED 健壮性/成本）**：`MAX_RETRY_BUDGET=5` clamp 客户端 retryBudget、`MAX_NOVEL_CHARS=200_000` 上限（runPipeline 抛 + route 返 413 双层防御）。红测：retryBudget=100000 → 实际 convert 次数 = 2×(1+5)；超长 novel → reject 且零 LLM 调用。（注：concurrency 早被 `runPool` 的 `min(c, items.length)` 自然封顶，无需额外 clamp。）
+- **#3（LOW）**：curate 后若 `bible.locations` 为空 → 早发 error 事件 + 抛清晰错误，而非等占位场景的 `dominantLocation` 在 pool worker 里抛、整run 崩。红测：map/reduce 返回零地点 → reject /location/i + 有 error 事件 + 零场景转换。
+- **#4（LOW）**：fatal 错误时 `pipelineToSSEStream` 用 `sawError` 标志去重——runPipeline 已发过 stage 专属 error 就不再补发 assemble error。红测：curate 抛 → SSE 流里 `event: error` 恰好 1 帧（原为 2）。
+- **#5（LOW，未改）**：abort 后 pool 里在飞的 worker 会跑完——影响极小（下一轮 `throwIfAborted` 即停），留着不动。
+
+**修后门禁复跑**：`tsc` exit 0；`lint` 0 warning；`npm test` = **162 passed | 3 skipped**（+5 审查修复测）；`LLM_SMOKE=1` 真端到端冒烟**再次 1 passed（≈43s）**，确认四个修复未伤 happy path。
+
+**可讲的一句话**：「冷上下文大审查在 merge 前逮到一个我所有单测都没覆盖的 bug——自纠循环里，如果 Critic 让我重写场景、而这次重写恰好失败，旧代码会把本来好好的场景替换成失败占位，等于 Critic 把作品改坏了还不吭声。我之所以漏掉，是因为我写的测试都在验证‘我以为会发生的事’，而审查是带着‘还有什么会出错’的冷眼睛读同一段代码。修法五行，但这正是‘每 2 个 PR 一次独立冷读’这条流程纪律存在的理由。」

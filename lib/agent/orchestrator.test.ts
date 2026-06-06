@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { runPipeline, pipelineToSSEStream } from "./orchestrator";
+import {
+  runPipeline,
+  pipelineToSSEStream,
+  MAX_RETRY_BUDGET,
+  MAX_NOVEL_CHARS,
+} from "./orchestrator";
 import { validateScreenplay } from "./validator";
 import type { PipelineEvent } from "./events";
 import { fromYAML } from "../schema/yaml";
@@ -272,5 +277,83 @@ describe("pipelineToSSEStream (route glue: events → SSE frames)", () => {
     const text = await readAll(pipelineToSSEStream(NOVEL, llm));
     expect(text).toContain("event: error\n");
     expect(text).toContain("boom");
+  });
+});
+
+describe("review fixes (#1–#4)", () => {
+  it("#1 — a failed Critic-driven revision keeps the good scene, never adopts the placeholder", async () => {
+    // Initial conversion clean; any REVISION call (prompt contains 上一版) throws.
+    // Critic always major ⇒ semantic retry hits the throwing revision.
+    const events: PipelineEvent[] = [];
+    const { llm } = fakeLLM({
+      scene: (_n, userText) => {
+        if (userText.includes("上一版")) throw new Error("bad json on revision");
+        return cleanRaw();
+      },
+      critique: () => ({
+        issues: [{ severity: "major", category: "fidelity", detail: "漏对白", suggestion: "补回" }],
+      }),
+    });
+    const sp = await runPipeline(NOVEL, llm, {
+      retryBudget: 1,
+      onEvent: (e) => events.push(e),
+    });
+    // Good scene preserved (NOT the placeholder), flagged for review.
+    for (const s of sp.scenes) {
+      expect(s.synopsis.startsWith("测试场景")).toBe(true);
+      expect(s.synopsis).not.toContain("自动占位");
+      expect(s.elements.some((el) => el.type === "dialogue")).toBe(true);
+      expect(s.needs_review).toBe(true);
+    }
+    // The scene was salvaged, so no spurious error event is emitted.
+    expect(events.some((e) => e.type === "error")).toBe(false);
+  });
+
+  it("#2a — an absurd retryBudget is clamped to MAX_RETRY_BUDGET", async () => {
+    const { llm, counts } = fakeLLM({ scene: (n) => unresolvedRaw(String(n)) });
+    await runPipeline(NOVEL, llm, { critic: false, retryBudget: 100000 });
+    // 2 scenes × (1 initial + MAX_RETRY_BUDGET retries)
+    expect(counts.scene).toBe(2 * (1 + MAX_RETRY_BUDGET));
+  });
+
+  it("#2b — an oversized novel is rejected before any LLM call", async () => {
+    const { llm, counts } = fakeLLM();
+    await expect(
+      runPipeline("字".repeat(MAX_NOVEL_CHARS + 1), llm),
+    ).rejects.toThrow();
+    expect(counts.map).toBe(0);
+  });
+
+  it("#3 — a bible with no locations fails cleanly (error event + reject), not a mid-scene crash", async () => {
+    const events: PipelineEvent[] = [];
+    let sceneCalls = 0;
+    const llm: LLMClient = {
+      chat: async () => "",
+      chatJSON: async <T = unknown>(messages: ChatMessage[]) => {
+        const t = messages.map((m) => m.content).join("\n");
+        if (t.includes("逐章实体表") || t.includes("本章原文")) {
+          return { characters: [{ name: "贾母", romanization: "jiamu" }], locations: [] } as T;
+        }
+        sceneCalls++;
+        return cleanRaw() as T;
+      },
+    };
+    await expect(runPipeline(NOVEL, llm, { onEvent: (e) => events.push(e) })).rejects.toThrow(
+      /location/i,
+    );
+    expect(events.some((e) => e.type === "error")).toBe(true);
+    expect(sceneCalls).toBe(0); // failed before converting any scene
+  });
+
+  it("#4 — a fatal pipeline error produces exactly one SSE error frame", async () => {
+    const llm: LLMClient = {
+      chat: async () => "",
+      chatJSON: async () => {
+        throw new Error("boom");
+      },
+    };
+    const text = await readAll(pipelineToSSEStream(NOVEL, llm));
+    const errorFrames = text.split("\n").filter((l) => l === "event: error").length;
+    expect(errorFrames).toBe(1);
   });
 });

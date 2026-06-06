@@ -12,7 +12,11 @@
  * The Web Request's `signal` is forwarded so a client disconnect cancels work.
  */
 
-import { pipelineToSSEStream, type OrchestratorOptions } from "../../../lib/agent/orchestrator";
+import {
+  pipelineToSSEStream,
+  MAX_NOVEL_CHARS,
+  type OrchestratorOptions,
+} from "../../../lib/agent/orchestrator";
 import { createLLMClient, loadLLMConfigFromEnv } from "../../../lib/llm/client";
 
 export const runtime = "nodejs";
@@ -36,6 +40,14 @@ export async function POST(req: Request): Promise<Response> {
   const novel = body?.novel;
   if (typeof novel !== "string" || novel.trim().length === 0) {
     return Response.json({ error: "`novel` (non-empty string) is required" }, { status: 400 });
+  }
+  // Review #2: reject pathological input at the HTTP layer (runPipeline also
+  // guards, defense-in-depth) so a huge body never fans out into the pipeline.
+  if (novel.length > MAX_NOVEL_CHARS) {
+    return Response.json(
+      { error: `novel too large: ${novel.length} > ${MAX_NOVEL_CHARS} chars` },
+      { status: 413 },
+    );
   }
 
   // Build the LLM client up front so a misconfigured env returns a clean 500

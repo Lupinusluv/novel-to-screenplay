@@ -63,6 +63,13 @@ interface WorkItem {
 const PLACEHOLDER_BODY_CAP = 200;
 const PLACEHOLDER_EXCERPT_CAP = 120;
 
+/** Upper bound on per-arm retries, regardless of caller-supplied `retryBudget`
+ *  (review #2: untrusted options must not fan out unbounded LLM calls). */
+export const MAX_RETRY_BUDGET = 5;
+/** Upper bound on input size (review #2: a pathological novel must not fan out
+ *  into unbounded chunking + per-scene LLM calls). ~200k chars ≫ any real demo. */
+export const MAX_NOVEL_CHARS = 200_000;
+
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) {
     const e = new Error("Pipeline aborted");
@@ -224,7 +231,8 @@ async function processCandidate(
   opts: OrchestratorOptions,
   emit: (e: PipelineEvent) => void,
 ): Promise<Scene> {
-  const budget = opts.retryBudget ?? 2;
+  // Clamp the caller-supplied budget (review #2): never exceed MAX_RETRY_BUDGET.
+  const budget = Math.min(Math.max(opts.retryBudget ?? 2, 0), MAX_RETRY_BUDGET);
   const det = await convergeDeterministic(item, bible, llm, budget);
   let scene = det.scene;
 
@@ -252,6 +260,9 @@ async function processCandidate(
       prior: scene,
     };
     const re = await convergeDeterministic(item, bible, llm, budget, seed);
+    // FIX #1: a failed revision must not replace the good scene with a
+    // placeholder — keep the current best (still flagged needs_review below).
+    if (re.errored) break;
     const h = sceneHash(re.scene);
     if (seen.has(h)) break; // E5 oscillation → keep current best
     seen.add(h);
@@ -294,6 +305,13 @@ export async function runPipeline(
   const signal = opts.signal;
   throwIfAborted(signal);
 
+  // Review #2: reject pathological input before any work / LLM call.
+  if (novelText.length > MAX_NOVEL_CHARS) {
+    throw new Error(
+      `novel too large: ${novelText.length} chars exceeds MAX_NOVEL_CHARS (${MAX_NOVEL_CHARS}).`,
+    );
+  }
+
   emit({ type: "stage_start", stage: "chunk" });
   const { chapters } = chunkNovel(novelText);
   emit({ type: "stage_done", stage: "chunk" });
@@ -306,6 +324,15 @@ export async function runPipeline(
   } catch (err) {
     emit({ type: "error", stage: "storybible", message: (err as Error).message });
     throw err;
+  }
+  // FIX #3: a location-less bible cannot yield referentially-valid scenes; fail
+  // early and cleanly (one error event) instead of crashing mid-scene when a
+  // placeholder's dominantLocation throws inside a pool worker.
+  if (bible.locations.length === 0) {
+    const message =
+      "StoryBible has no locations; cannot build a referentially-valid screenplay (upstream Curator produced no location).";
+    emit({ type: "error", stage: "storybible", message });
+    throw new Error(message);
   }
   emit({ type: "stage_done", stage: "storybible" });
 
@@ -366,6 +393,7 @@ export function pipelineToSSEStream(
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
+      let sawError = false;
       const safeEnqueue = (s: string) => {
         if (closed) return;
         try {
@@ -377,12 +405,19 @@ export function pipelineToSSEStream(
       try {
         await runPipeline(novelText, llm, {
           ...options,
-          onEvent: (e) => safeEnqueue(eventToSSE(e)),
+          onEvent: (e) => {
+            if (e.type === "error") sawError = true;
+            safeEnqueue(eventToSSE(e));
+          },
         });
       } catch (err) {
-        safeEnqueue(
-          eventToSSE({ type: "error", stage: "assemble", message: (err as Error).message }),
-        );
+        // FIX #4: runPipeline already emits a stage-specific error event before
+        // throwing; only synthesize one here if it didn't (avoid duplicate frames).
+        if (!sawError) {
+          safeEnqueue(
+            eventToSSE({ type: "error", stage: "assemble", message: (err as Error).message }),
+          );
+        }
       } finally {
         if (!closed) {
           try {
