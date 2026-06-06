@@ -6,7 +6,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # 项目协作约定
 
-本项目架构和规划相关内容优先使用 gstack skill，避免和 superpowers skill 发生冲突；而具体开发相关优先采用 superpowers skill。
+**架构 / 规划 / 设计只走 gstack 一套流程**（`/gstack-spec`、`/gstack-plan-eng-review`、`/gstack-autoplan` 等 + codex 跨模型冷读），**不再叠跑 superpowers 的 brainstorming**——两套一起跑太重、且职责重叠。具体开发 / 实现（TDD、写代码、调试）才用 superpowers。
+
+> 约定变更记录（2026-06-06，用户拍板）：此前 PR4 走的是「superpowers brainstorming → gstack /plan-eng-review + codex」两段式；自 PR5 起**砍掉 superpowers brainstorming 这一段**，设计阶段直接进 gstack（spec / 工程评审 / codex 冷读），轻量化。PR5 本会话的 brainstorming 已跑完、不回头补，仅自下个设计起照此执行。
 
 # 项目状态与约定（每个会话先读，/clear 后据此接续）
 
@@ -22,6 +24,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **质量门禁（强制，见 `docs/PROJECT.md §8.1`）**：每 PR 必跑 `npm test`+`npx tsc --noEmit`（贴原始输出）、TDD 先红、更新 `docs/DEVLOG.md`、用户点头才 merge。冷上下文大审查（`/code-review`+`/security-review`）每 2 PR 一次——**PR4 已审过；下次是 PR6**，基线锚到 PR4 合并点 `f41c257`（覆盖 PR5+PR6，详见 §8.1）。**PR5 只走每-PR 轻量门禁、不跑大审查。**
 
-**PR5 起步须知**：① LLM 配置已就绪——`loadLLMConfigFromEnv` 三者全缺时回退 DeepSeek（baseURL `https://api.deepseek.com`、model `deepseek-chat`），单测走 fixture、真冒烟用 `LLM_SMOKE=1` opt-in；② 待议决策（样本是否改简体、红楼取哪几回作 demo）到 PR5/demo 阶段该定，见 `docs/PROJECT.md §6` 下方备注；③ PR5 是创意性 LLM agent，**先 brainstorming 设计再 TDD**；④ PR5 复用 PR4 产出的 `StoryBible`（带稳定 id + `provenance` 章号侧表）作跨章共享记忆，场景转换须强制引用 Bible id。
+**PR5 起步须知**：① LLM 配置已就绪——`loadLLMConfigFromEnv` 三者全缺时回退 DeepSeek（baseURL `https://api.deepseek.com`、model `deepseek-chat`），单测走 fixture、真冒烟用 `LLM_SMOKE=1` opt-in；② 待议决策（样本是否改简体、红楼取哪几回作 demo）到 PR5/demo 阶段该定，见 `docs/PROJECT.md §6` 下方备注；③ PR5 是创意性 LLM agent，设计阶段**只走 gstack（spec + /gstack-plan-eng-review + codex 冷读），不跑 superpowers brainstorming**（见上「项目协作约定」），设计定稿后 TDD；④ PR5 复用 PR4 产出的 `StoryBible`（带稳定 id + `provenance` 章号侧表）作跨章共享记忆，场景转换须强制引用 Bible id。
 
-**接续步骤**：① 读 `docs/PROJECT.md`（单一事实来源，§10 接续步骤）+ `docs/DEVLOG.md`（开发纪实）；② `git checkout main && git pull --ff-only`（顶端应为 `f41c257` Merge PR #6）；③ 找 §6 下一个未完成 PR（当前 PR5）；④ 按 §8/§8.1 开分支、（PR5 先 brainstorming）TDD、跑门禁。
+**接续步骤**：① 读 `docs/PROJECT.md`（单一事实来源，§10 接续步骤）+ `docs/DEVLOG.md`（开发纪实）；② `git checkout main && git pull --ff-only`（顶端应为 `f41c257` Merge PR #6）；③ 找 §6 下一个未完成 PR（当前 PR5）；④ 按 §8/§8.1 开分支、设计走 gstack（不跑 superpowers brainstorming）、TDD、跑门禁。

@@ -234,7 +234,9 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）。
 2. **回 main 起 PR5 分支**：`git checkout main && git pull --ff-only`（应看到顶端 `f41c257` Merge PR #6），
    再 `git checkout -b pr5-scene-converter`。
-3. **PR5 是创意性 LLM agent，先 brainstorming 设计、再 TDD**（与 PR4 同节奏；架构/规划用 gstack，开发用 superpowers）。
+3. **PR5 是创意性 LLM agent，设计阶段只走 gstack（spec + /gstack-plan-eng-review + codex 冷读），不跑 superpowers brainstorming**，
+   设计定稿后再 TDD（**工作流约定 2026-06-06 变更**：架构/规划/设计 = gstack 一套；开发/实现 = superpowers。
+   PR4 曾叠跑 superpowers brainstorming + gstack 两段，自 PR5 起砍掉 brainstorming 段以轻量化——详见 AGENTS.md「项目协作约定」）。
    复用 PR4 已铺好的地基：`curateStoryBible` 产出的 `StoryBible`（`characters`/`locations` 带稳定 id + `provenance` 侧表）
    就是 PR5 的跨章共享记忆——场景转换须**强制引用 Bible id**（见 §3 schema 的引用完整性 `checkReferentialIntegrity`）。
    `provenance[id] → 章号` 可用来按章圈定候选实体，避免把整本 bible 塞进每个场景 prompt。
