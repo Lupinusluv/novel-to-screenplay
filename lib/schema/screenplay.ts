@@ -105,7 +105,9 @@ export const SceneSchema = z.strictObject({
   synopsis: z.string().min(1),
   source: SceneSourceSchema,
   elements: z.array(ElementSchema),
-  /** Set by the Critic/Orchestrator when retries are exhausted. */
+  /** Set when a scene needs human attention: by the Scene Converter on an
+   *  unresolved / ambiguous reference or a truncated body, or by the
+   *  Critic/Orchestrator when retries are exhausted. */
   needs_review: z.boolean().optional(),
 });
 

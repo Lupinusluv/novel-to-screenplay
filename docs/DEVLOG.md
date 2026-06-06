@@ -146,3 +146,32 @@
 - **低危（记录不改，理由附 PROJECT 待办）**：`assignIds` 纯数字 romanization 与位置兜底撞 id（唯一性仍保持，LLM 给拼音几乎不可能）；`computeProvenance` O(N×C) 全本扩展性（3 章无感）；char/loc 四 schema + 双胞胎管线重复（spec 已接受对称重复）；`provenance` 跨表 spread 被前缀设为不可达。
 
 **可讲的一句话**：「大审查最有价值的一刀不在我刚写的 PR4，而在搭着一起审的 PR3：冷读 agent 指出分章正则强制空格分隔符，会漏掉‘标题紧贴’的章回标题。但那道空格要求又正是挡正文假标题的护栏——直接拆会破回归。真正的修法是换个判据（标题不含句读 vs 散文必含句读），一条规则同时满足‘收得进真标题、挡得住假标题’。审查的价值是逼你把‘侥幸通过’变成‘想清楚为什么通过’。」
+
+---
+
+## PR5 · Scene Converter（单场景→剧本元素流，强制引用 Bible id）✅
+
+> 设计与评审过程见上方 spec（`docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`，§11 是 gstack 工程评审 + codex 冷读的权威增量 E1–E6/I1–I11）。本节记录 **TDD 实现纪实**（T1–T6 先红后绿）。
+
+**架构落地（scope → LLM 转换 → 解析 → 组装 → 校验）**
+- `lib/agent/sceneConverter.ts`：单候选 → 单 `Scene`。LLM **只说名字**，确定性代码独揽 id 解析、`source` 溯源、`scene.id`（D1/D2「LLM 提示、代码权威」一路贯彻到第二个 agent）。
+- **结构 vs 引用 二分**（D6）落到两条互不污染的失败路径：结构垃圾（坏枚举/缺必填/非法 JSON）**抛错带 `scene_<章>_<序>` 上下文**冒泡给 PR6 重试；引用未命中（说话人/地点不在 bible）走**最佳努力 + 带定位 `ConversionIssue` + `needs_review`**，场景永远 schema 有效且对 bible 引用干净。
+- **纯函数全部独立可测、零网络**：`normalizeSurface`/`buildResolver`/`resolveSurface`/`scopeCast`/`dominantLocation`/`assembleScene`/`coerceRawScene` 先 red-green 钉死确定性逻辑，再用**内容键控 stub**（复用 PR4 I7：system prompt 不放人物示例，只按 user 消息路由）测 `convertScene` 编排。48 个 fixture 测试覆盖 §7 全分支 + 评审 GAP（E1–E6/I3/I6）。
+
+**评审增量如何变成代码（最能讲的设计点）**
+- **E1 地点回退「诚实化」**：codex 冷读逮到 v1 的「回退本章出场最多地点」会**系统性偏向伞状地点**（红楼里恒选「荣国府」），填入真 id 后还能骗过 `checkReferentialIntegrity` → **产出「结构有效的语义谎言」**，比未解析说话人更危险。改为 `dominantLocation` = **本章 scoped 地点中 id 码点序最小者**（中性、确定、不偏伞状），且 issue 明标 `placeholder fallback, heading unverified` + `needs_review`。专门写了一条测试断言它选**小 id 的次要地点而非高频的伞状地点**——把「不偏伞状」钉成回归。
+- **E2 歧义三级确定性梯**：`validateStoryBible` 只查实体内别名重复、**不查跨实体同名别名** → 别名歧义是**预期输出而非罕见**。解析按梯：① 规范 name 命中 > 仅 alias 命中；② 本章 scoped 候选 > 仅跨章；③ 平手取 id 码点序最小。全程确定性，命中 2+ 记 `ambiguous_reference` issue（带 `candidates` id 列表）+ `needs_review`，但默认猜值大概率对。
+- **E3 coerce 预处理**：D6「多字段一律抛错」过刚——可平凡修复的形状噪音（dialogue 多带 `text`、action 误带 `speaker`）丢弃即可。仿 PR4 `coerceMapEntities`，strict 校验前按元素 `type` 白名单剔多余字段、计数告警；只对真垃圾抛错。
+- **E5 降级台词引号包裹**：未解析说话人降级为 `action` 时 `text = 「` + 原台词 + `」`——保「这是说的话」的可读性，**不把未核实的说话人名注入旁白**。
+- **I6 跨章解析 = 有效引用**：prompt 只圈本章 cast（聚焦 + 省 token），但 resolver 跑**全 bible**——LLM 引了本章 cast 外、全 bible 内的合法地点（如 6 回里提 3 回的「碧纱橱」）**解析命中即有效、非 issue**。一条测试专测这条「聚焦是提示非硬约束」。
+
+**真模型逼出的「叙事纠偏」（门控冒烟的意义，又一次）**
+- fixture 全绿、tsc 干净后跑 `LLM_SMOKE=1` 真打 DeepSeek（≈5 次调用：curator map/reduce + 1 次 convert）。冒烟**当场纠正了我对样本的一个假设**：我按「黛玉进荣国府=群戏对白」写了「命中已知 speaker id」的断言，结果真模型把那段**忠实转成了 7 条全 `action` 的纯叙述**——因为截断版前三回里，黛玉是**正穿过神京街市走向府门**，台词密的相见戏（賈母/熙鳳/摔玉）根本不在样本里。模型还把 `heading.location` 选成了**包裹动作的「神京」**（都中），而非更细的「榮國府」——这是**完全正确**的转换（`issues=[]`、引用全干净），是我的断言太窄。
+- 据此把 I7 冒烟锚点改成**真正稳定且有意义**的：断言 heading 地点**干净解析到一个已知 curated id（无 `unresolved_location`、非 placeholder 兜底）** + 场景文本忠实包含原文实体（`黛玉`/`榮國府`，防「合法但臆造」）。**这恰好实证了 spec §8/E4 的判断**：现有截断繁體样本对白稀、是工具招牌能力（带对白的场景转换）的弱样本——所以 E4 才把「简体回3/6/7 语料重拉」拆成 demo 前的独立预备步骤，PR5 只复用它跑契约冒烟。**真数据替我证明了 defer 这个 scope 的决定是对的。**
+
+**门禁证据**
+- TDD：T1–T6 每个新函数/分支先红后绿（schema 拒识、coerce 剔字段、resolver 三级梯、地点诚实回退、降级引号、编排全分支、错误冒泡均先看失败）。
+- `npm test`：**122 passed | 2 skipped**（PR4 + PR5 两个门控真冒烟默认 skip）；`npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净；`LLM_SMOKE=1` 真冒烟 **1 passed（≈20s，真打 DeepSeek）**。
+- **PR5 不是大审查批次**（§8.1 节奏：下次大审查 PR6，基线锚 PR4 合并点 `f41c257`，覆盖 PR5+PR6）。
+
+**可讲的一句话**：「最危险的 bug 是‘结构有效的语义谎言’——codex 冷读逮到我原本的地点回退会永远填‘荣国府’，还能骗过引用完整性校验，比一个明显的未解析更难发现。修法不是抛错（那会破坏‘最佳努力’边界），而是回退到**中性的最小 id 地点 + 醒目标 `heading unverified` + needs_review**：让谎言**显形**而不是消失。然后真模型冒烟又反过来教育了我——它把‘黛玉进府’忠实转成纯叙述、把地点选成‘神京’，证明我连样本里有没有对白都记错了，也实证了我们提前把语料迁移 defer 出 PR5 是对的。」
