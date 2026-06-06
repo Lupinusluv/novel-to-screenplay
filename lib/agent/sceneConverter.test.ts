@@ -613,3 +613,56 @@ describe("convertScene (orchestration)", () => {
     expect(scene.elements[1]).toMatchObject({ type: "dialogue", character_id: "char_jiamu" });
   });
 });
+
+// ===========================================================================
+// D1 (PR6) — optional `revision` parameter feeds prior-attempt critique back
+// into the prompt so a temperature:0 retry actually changes its output. The
+// addition is append-only and backward-compatible: with no `revision`, the
+// prompt is byte-for-byte what PR5 produced (E13).
+// ===========================================================================
+
+describe("convertScene revision param (D1 / E13: feedback injection)", () => {
+  it("T7 — without revision, the prompt is exactly the PR5 two-message shape", async () => {
+    const { llm, calls } = sceneStub(RAW_CLEAN);
+    await convertScene(candidate(), 3, bible(), llm);
+    expect(calls[0].messages).toHaveLength(2);
+    expect(calls[0].messages[0].role).toBe("system");
+    expect(calls[0].messages[1].role).toBe("user");
+    // No revision marker leaks into a first-pass prompt.
+    const joined = calls[0].messages.map((m) => m.content).join("\n");
+    expect(joined).not.toMatch(/上一版/);
+  });
+
+  it("T6 — with revision, an extra user message carries the critique verbatim", async () => {
+    const { llm, calls } = sceneStub(RAW_CLEAN);
+    await convertScene(candidate(), 3, bible(), llm, {
+      critique: ["焦大 不在人物表，请用以下称呼之一：贾母、林黛玉", "heading 地点未核实"],
+    });
+    // Append-only: the two PR5 messages are preserved, a third is added.
+    expect(calls[0].messages).toHaveLength(3);
+    expect(calls[0].messages[2].role).toBe("user");
+    const revisionMsg = calls[0].messages[2].content;
+    expect(revisionMsg).toContain("焦大 不在人物表");
+    expect(revisionMsg).toContain("heading 地点未核实");
+    // The first two messages are unchanged from the no-revision shape.
+    expect(calls[0].messages[0].role).toBe("system");
+    expect(calls[0].messages[1].role).toBe("user");
+  });
+
+  it("renders the prior scene when supplied, still appending (not replacing)", async () => {
+    const { llm, calls } = sceneStub(RAW_CLEAN);
+    const prior = (await convertScene(candidate(), 3, bible(), sceneStub(RAW_CLEAN).llm)).scene;
+    await convertScene(candidate(), 3, bible(), llm, {
+      critique: ["重试请修订"],
+      prior,
+    });
+    expect(calls[0].messages).toHaveLength(3);
+    expect(calls[0].messages[2].content).toContain("重试请修订");
+  });
+
+  it("still pins temperature 0 on a revision retry (determinism preserved)", async () => {
+    const { llm, calls } = sceneStub(RAW_CLEAN);
+    await convertScene(candidate(), 3, bible(), llm, { critique: ["x"] });
+    expect(calls[0].opts?.temperature).toBe(0);
+  });
+});

@@ -172,6 +172,54 @@
 **门禁证据**
 - TDD：T1–T6 每个新函数/分支先红后绿（schema 拒识、coerce 剔字段、resolver 三级梯、地点诚实回退、降级引号、编排全分支、错误冒泡均先看失败）。
 - `npm test`：**122 passed | 2 skipped**（PR4 + PR5 两个门控真冒烟默认 skip）；`npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净；`LLM_SMOKE=1` 真冒烟 **1 passed（≈20s，真打 DeepSeek）**。
-- **PR5 不是大审查批次**（§8.1 节奏：下次大审查 PR6，基线锚 PR4 合并点 `f41c257`，覆盖 PR5+PR6）。
+- **PR5 不单独跑大审查**（§8.1 节奏：合入 PR6 批次一起审，基线锚 PR4 合并点 `f41c257`，覆盖 PR5+PR6）。
+- **合并落点**：用户放行后走 §8 流程，PR **#7** `--merge` 入 main，merge commit **`42454b7`**，分支已删（本地+远程）。合并前重跑门禁复核绿（`tsc` exit 0、`npm test` 122 passed | 2 skipped）。
 
 **可讲的一句话**：「最危险的 bug 是‘结构有效的语义谎言’——codex 冷读逮到我原本的地点回退会永远填‘荣国府’，还能骗过引用完整性校验，比一个明显的未解析更难发现。修法不是抛错（那会破坏‘最佳努力’边界），而是回退到**中性的最小 id 地点 + 醒目标 `heading unverified` + needs_review**：让谎言**显形**而不是消失。然后真模型冒烟又反过来教育了我——它把‘黛玉进府’忠实转成纯叙述、把地点选成‘神京’，证明我连样本里有没有对白都记错了，也实证了我们提前把语料迁移 defer 出 PR5 是对的。」
+
+## PR6 · Validator + Critic + Orchestrator + SSE —— 收尾闭环（2026-06-06）✅
+
+> 设计见 spec `docs/superpowers/specs/2026-06-06-pr6-validator-critic-orchestrator-design.md`（§11 是 codex 跨模型冷读的权威增量 E1–E14）。本节记录 TDD 实现纪实。设计阶段走 gstack-spec 五段 + codex 冷读；用户选「直接进 TDD」（跳过 plan-eng-review）。
+
+**这是什么**：把前 5 个 PR 的零件串成端到端管线。新增四组件（+ 一个共享事件契约 + SSE 编码器）：
+- `lib/agent/events.ts`：`Stage` + `PipelineEvent` 联合（含末帧 `final_result`、`error`）。**单独成文件**而非塞进 orchestrator（spec §9 原写在 orchestrator）——这样纯函数 `eventToSSE` 不必 import orchestrator（会拖进全部 agent），避免循环、编码器可独立测。
+- `lib/agent/sse.ts`：`eventToSSE` 纯函数，typed event 通道 `event: <type>\ndata: <json>\n\n`（E9）。
+- `lib/agent/validator.ts`：`validateScreenplay`（整部门禁：结构 + 引用 + 跨章 id 去重 + needs_review 普查，D3/E11）+ `validateScene`（防御性富报告，E12）。
+- `lib/agent/critic.ts`：第二个纯 LLM agent，语义自评（人物矛盾/称谓不一/漏对白/偏离原文），只报问题 + 建议、不改写；`ok = 无 major`，minor 不触发重试。沿用 PR4 I7（system 无实体示例，stub 纯按 user 消息路由）+ 形状 coerce/throw 二分。
+- `lib/agent/orchestrator.ts`：`runPipeline` + `pipelineToSSEStream`；`sceneConverter.ts` 加可选 `revision` 参数（D1）。
+- `app/api/convert/route.ts`：Next 16 SSE 路由，极薄（实现前读了 `node_modules/next/dist/docs/` 的 route-handlers + streaming，确认 `new ReadableStream({start})` + `new Response(stream, headers)`、`runtime="nodejs"` + `dynamic="force-dynamic"`）。
+
+**codex 冷读如何改了架构（最能讲的）**：草案的重试循环是「确定性臂跑完→语义臂跑完」两段。codex 冷读（6/10，17 条）逮到致命的一条：**Critic 改写一个场景后，没人再跑确定性复检**——Critic 可能把场景改出新的未解析引用，却直接收尾。修法（E1）把循环改成**双层不动点**：每次 convert（含语义改写）后都先「确定性修复到不动点」，Critic 只看已 settle 的场景。又补了：① convertScene 的 **throw 纳入重试预算**（坏 JSON/坏 shape 重试，耗尽插占位 needs_review 场景 + 发 error 事件，不让一个坏场景毁掉整部，E2）；② temp=0 下**同样 critique 复现同样坏场景**→ 不动点哈希早停（E3）；③ 两臂 critique 不同仍可能 A→B→A **振荡** → 跨臂 `seen` 哈希环检测（E5）；④ **并行不打乱章节序**（按全局序归位再汇编，E5b）；⑤ 末帧改 typed `final_result` 事件（E10）；⑥ abort 链路 + Next runtime 锁定（E7/E8）。还修了我自己引入的 `validateScreenplay` 签名不一致（E11）。
+
+**TDD 证据（先红后绿，逐组件）**：
+- 每个组件都先写测试看失败（module 不存在 / 行为缺失），再最小实现到绿。
+- `sse`（4）→ `validator`（8，T1–T5）→ `sceneConverter` D1（+4，T6/T7：**关键回归 T7 断言不传 revision 时 prompt 与 PR5 逐消息一致**，48 个 PR5 测全绿不受影响）→ `critic`（6，T8–T10）→ `orchestrator`（13，T12–T22 + 2 条 `pipelineToSSEStream` 流测）→ smoke（1，门控）。
+- 自纠循环的两个「早停」用调用计数钉死区分：**T13 预算耗尽**（每场景 distinct → 1+budget=3 次 convert）vs **T19 不动点早停**（identical → 2 次就停）；**T14 语义重试**（distinct → critique 多次）vs **T20 环检测**（identical → critique 只 1 次就停）。
+
+**门禁证据**：
+- `npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净（0 warning）；`npm test` = **157 passed | 3 skipped**（PR4/PR5/PR6 三个门控真冒烟默认 skip）。
+- **`LLM_SMOKE=1` 真端到端冒烟 1 passed（≈48s，真打 DeepSeek）**：繁體前三回样本跑通 chunk→curate→9 场景 convert+critic+retry→assemble→SSE→YAML，`validateScreenplay` 门禁干净（结构/引用/重复 id 全空）、scenes 顺序正确、`stage_progress` 计到 total、`final_result` 的 YAML 可 `fromYAML` 往返。**PR5 那次冒烟逼出的「样本对白稀」叙事在这里复现且无害**——smoke 只断契约不断对白数（同一教训）。
+
+**与 spec 的偏差（记录）**：① 事件类型独立成 `events.ts`（见上，避免循环）；② `validateScene` 作为**独立可测工具**导出、未塞进 orchestrator 循环——因为 `convertScene` 自身的 `sceneReferentialCheck` 已对 dangling 引用 throw（被 orchestrator 的 E2 路径接住），再跑一遍 validateScene 是无法触发的死分支，TDD 下不写无测试的分支。`validateScreenplay` 则在 T12 作为整部门禁被实测。
+
+**可讲的一句话**：「外部模型冷读救了这个 PR 的命门——我把自纠循环写成‘先修引用、再修语义’两段，看着合理，但 codex 一眼看穿：Critic 改完场景没人再查引用，等于语义臂能把我刚修好的引用又改坏。修法是把它变成‘每次改写后都重新收敛到确定性不动点’的双层循环，再加不动点早停和环检测，这样 temperature=0 的重试既不会白跑、也不会无限振荡。然后真端到端冒烟 48 秒跑通九个场景的转换+审稿+重试，证明四个 agent 真的协同工作，不只是单测里的桩。」
+
+### PR6 大审查（`/code-review` + `/security-review`，冷读 `f41c257..HEAD` 覆盖 PR5+PR6）
+
+> §8.1 节奏批次（PR4 后第二个节点）。基线**必须锚 PR4 合并点 `f41c257`**（PR5 已并入 main，用 `main...` 会漏掉 PR5）。
+
+- **`/code-review`（high）**：5 条——1 真 correctness + 1 健壮性/成本 + 3 LOW。
+- **`/security-review`**：0 条（严格门槛下无 HIGH/MED；输入无上限 / 信任客户端 options 这类属 DoS/资源，按 security 排除规则归到 code-review；prompt 注入、env 可信、路径-only SSRF 均排除）。
+
+**逮到的真 bug（最值得讲）#1**：自纠循环的**语义臂会吞下占位场景**。确定性臂产出一个干净场景 S（进了 Critic），Critic 报 major，语义重试时这次 convert 反复吐坏 JSON → `convergeDeterministic` 返回 errored 占位 P；原代码 `scene = re.scene` **没查 `re.errored`**，于是把好场景 S 替换成占位 P（内容丢失），且**不发 error 事件**——**Critic 把好场景改成了垃圾，还悄无声息**。这正是冷上下文审查的价值：单测全绿，但测试编码的是我自己的假设，没覆盖「语义改写本身失败」这条路径。
+
+**四条全部 TDD 修掉（先红后绿）**：
+- **#1（MED 正确性）**：语义臂 `if (re.errored) break`——失败的修订不替换、保留当前最佳场景（仍打 needs_review）。新增红测：初始干净、所有 revision 调用抛错 → 断言最终场景是干净 S（非占位）+ needs_review + 无 spurious error 事件。
+- **#2（MED 健壮性/成本）**：`MAX_RETRY_BUDGET=5` clamp 客户端 retryBudget、`MAX_NOVEL_CHARS=200_000` 上限（runPipeline 抛 + route 返 413 双层防御）。红测：retryBudget=100000 → 实际 convert 次数 = 2×(1+5)；超长 novel → reject 且零 LLM 调用。（注：concurrency 早被 `runPool` 的 `min(c, items.length)` 自然封顶，无需额外 clamp。）
+- **#3（LOW）**：curate 后若 `bible.locations` 为空 → 早发 error 事件 + 抛清晰错误，而非等占位场景的 `dominantLocation` 在 pool worker 里抛、整run 崩。红测：map/reduce 返回零地点 → reject /location/i + 有 error 事件 + 零场景转换。
+- **#4（LOW）**：fatal 错误时 `pipelineToSSEStream` 用 `sawError` 标志去重——runPipeline 已发过 stage 专属 error 就不再补发 assemble error。红测：curate 抛 → SSE 流里 `event: error` 恰好 1 帧（原为 2）。
+- **#5（LOW，未改）**：abort 后 pool 里在飞的 worker 会跑完——影响极小（下一轮 `throwIfAborted` 即停），留着不动。
+
+**修后门禁复跑**：`tsc` exit 0；`lint` 0 warning；`npm test` = **162 passed | 3 skipped**（+5 审查修复测）；`LLM_SMOKE=1` 真端到端冒烟**再次 1 passed（≈43s）**，确认四个修复未伤 happy path。
+
+**可讲的一句话**：「冷上下文大审查在 merge 前逮到一个我所有单测都没覆盖的 bug——自纠循环里，如果 Critic 让我重写场景、而这次重写恰好失败，旧代码会把本来好好的场景替换成失败占位，等于 Critic 把作品改坏了还不吭声。我之所以漏掉，是因为我写的测试都在验证‘我以为会发生的事’，而审查是带着‘还有什么会出错’的冷眼睛读同一段代码。修法五行，但这正是‘每 2 个 PR 一次独立冷读’这条流程纪律存在的理由。」
