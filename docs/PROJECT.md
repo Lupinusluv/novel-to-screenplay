@@ -146,9 +146,9 @@ scenes:
   分章正则强制空格分隔符会漏「标题紧贴」章回，改为「分隔符可选 + 标题禁含句读」的标点护栏，TDD 先红后绿，
   原 `第四回中…` 假标题回归仍绿。低危发现 defer，见下方「PR4 审查 defer 项」。详见 DEVLOG「PR4 大审查」节。）
 
-> **待议决策（defer 到对应 PR，勿遗忘）**：
-> - **示例小说改用简体**（便于 demo 展示）。当前 `samples/honglou-meng-ch1-3.txt` 是繁體红楼梦；换简体样本时同步更新 chunker 的繁體 cue 冒烟测试（繁體 cue 支持可保留作健壮性）。—— 到 PR5 / demo 阶段定。
-> - **红楼梦不一定取前三回**作 demo；章节选择到对应 PR 再定。
+> **样本决策（已定，2026-06-06 PR5 设计阶段）**：
+> - **改用简体 + 取红楼回3/6/7**（黛玉进贾府 / 劉姥姥一進榮國府 / 送宮花）——群戏、对白密、别名丰、地点清晰，鳳姐/寶玉/黛玉跨三回反复出场作跨章合并弹药。当前 `samples/honglou-meng-ch1-3.txt` 是繁體前三回（截断在黛玉进府前、对白稀，偏弱）。
+> - **执行已拆出 PR5**（PR5 spec §11 E4：双模型一致，避免 scope 陷阱 + OpenCC 依赖风险）：语料重拉（curl 取 Gutenberg 逐字 → OpenCC 转简 → 裁剪 → 归一化回目 → 同步 chunker 繁體 cue 冒烟测试，保留小繁體 fixture 续测健壮性）作**独立预备步骤**，置于 demo（PR7/8）前。PR5 冷烟复用现有繁體前三回样本。
 > - **LLM 配置缺口**（已在 PR4 spec 定方案，实现待落地）：环境仅有 `DEEPSEEK_API_KEY`。方案 = `loadLLMConfigFromEnv`
 >   显式 `LLM_*` 优先、三者全缺时回退 DeepSeek（baseURL `https://api.deepseek.com`、model `deepseek-chat`）；
 >   **部分显式 + DeepSeek key → 报缺失项错、不回退**（spec §10 I8）。单测走 fixture 不烧 key。
@@ -158,7 +158,7 @@ scenes:
 > - `assignIds` 纯数字 romanization 与位置兜底可撞 id（`char_2`/`char_2_2`），唯一性仍保持；LLM 给拼音 hint 几乎不可能纯数字，惰性。
 > - `computeProvenance` O(N×C) 全扫描，3 章无感，全本输入下可换倒排索引。
 > - char/loc 四 schema + 双胞胎管线重复（spec 已接受对称重复）；如第三个对称实体出现再抽 `EntityBase`/`buildTable()` 泛化。
-- [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。
+- [ ] **PR5 Scene Converter** — 单场景→elements，强制引用 Bible id；fixture 测试。**设计 + 评审已完成（2026-06-06，ENG CLEARED）**，实现待 TDD：见 spec `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`（§11 权威增量 + T1–T7 任务）；分支 `pr5-scene-converter` 已有 3 设计 commit（HEAD `bbe2e50`）。
 - [ ] **PR6 Validator + Critic + Orchestrator + SSE** — 校验/自评/编排重试循环 + `app/api/convert/route.ts`；端到端跑通 sample。
 - [ ] **PR7 前端核心** — 输入(粘贴/上传/示例)+剧本卡片视图+YAML 切换+导出。
 - [ ] **PR8 Agent 可视化 + 溯源 + 打磨** — 进度时间线随 SSE 点亮、场景溯源、空/错状态、README + demo 脚本。
@@ -226,22 +226,22 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 ## 10. /clear 后如何接续
 
 > **当前状态快照（2026-06-06）**：**PR1–PR4 全部已并入 main**，main 在 **`f41c257`**（Merge PR #6）。
-> PR4 StoryBible Curator 完工：`lib/agent/storyBible.ts`（map-reduce + 确定性 id + provenance + 强校验）、
-> `LocationSchema.aliases`、`loadLLMConfigFromEnv` DeepSeek 回退；大审查（覆盖 PR3+PR4）已过、低危项 defer 记于 §6。
-> 当前 `npm test` = **74 passed | 1 skipped**（门控真冒烟默认 skip），`tsc` 干净。
-> **下一个：PR5 Scene Converter**（单场景 → elements，强制引用 Bible id）。**PR5 不是审查批次**（下次大审查在 PR6，§8.1）。
+> **PR5 Scene Converter 进行中：设计已完成、gstack 工程评审 + codex 冷读已过（ENG CLEARED），尚未写实现代码。**
+> 分支 **`pr5-scene-converter`** 已有 3 个**设计 commit**（HEAD `bbe2e50`，领先 main，**未推 origin、未 merge**）：
+> spec 落盘 → 评审增量（§11）→ 工作流约定变更。spec = `docs/superpowers/specs/2026-06-06-pr5-scene-converter-design.md`
+> （**§11 是权威增量**：E1 地点回退诚实化 / E2 歧义三级梯 / E3 D6 加 coerce / E4 语料重拉拆出 PR5 / E5 降级引号 / E6 SCENE_BODY_CAP + 11 fold-in；末尾 **T1–T7 TDD 任务清单**）。
+> 当前 `npm test` = **74 passed | 1 skipped**，`tsc` 干净（实现未动）。**PR5 不是审查批次**（下次大审查在 PR6，§8.1）。
 
-1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）。
-2. **回 main 起 PR5 分支**：`git checkout main && git pull --ff-only`（应看到顶端 `f41c257` Merge PR #6），
-   再 `git checkout -b pr5-scene-converter`。
-3. **PR5 是创意性 LLM agent，设计阶段只走 gstack（spec + /gstack-plan-eng-review + codex 冷读），不跑 superpowers brainstorming**，
-   设计定稿后再 TDD（**工作流约定 2026-06-06 变更**：架构/规划/设计 = gstack 一套；开发/实现 = superpowers。
-   PR4 曾叠跑 superpowers brainstorming + gstack 两段，自 PR5 起砍掉 brainstorming 段以轻量化——详见 AGENTS.md「项目协作约定」）。
-   复用 PR4 已铺好的地基：`curateStoryBible` 产出的 `StoryBible`（`characters`/`locations` 带稳定 id + `provenance` 侧表）
-   就是 PR5 的跨章共享记忆——场景转换须**强制引用 Bible id**（见 §3 schema 的引用完整性 `checkReferentialIntegrity`）。
-   `provenance[id] → 章号` 可用来按章圈定候选实体，避免把整本 bible 塞进每个场景 prompt。
-4. **§6 待议决策到 PR5 该定了**：① 示例小说是否改简体（同步 chunker 繁體 cue 冒烟）；② 红楼梦取哪几回作 demo。
-5. 跑齐 §8.1 门禁（`npm test`+`npx tsc --noEmit` 贴原始输出、TDD 先红、更新 DEVLOG、用户点头才 merge）。
+1. 读本文件 + `docs/DEVLOG.md` + **PR5 spec（重点 §11 + T1–T7）**。
+2. **接已有分支、不要回 main 重开**：`git checkout pr5-scene-converter`（HEAD 应为 `bbe2e50`，3 个设计 commit 已在）。
+   **设计已定稿、评审已过——不要重跑设计 / brainstorming / 评审**，直接接 TDD 实现。
+3. **用 superpowers 的 TDD 流程从 spec §11「实现任务 T1」起逐个实现**（先红后绿）。
+   （**工作流约定 2026-06-06 变更**：架构/规划/设计 = gstack 一套；开发/实现 = superpowers。设计阶段已走完。）
+   复用 PR4 地基：`StoryBible`（`characters`/`locations` 带稳定 id + `provenance` 侧表）= 跨章共享记忆，
+   场景转换强制引用 Bible id（`checkReferentialIntegrity`）；`provenance[id]→章号` 按章圈 cast。
+4. **样本决策已定**（简体 + 红楼回3/6/7），但**语料重拉已拆出 PR5**（§11 E4）：PR5 冷烟复用现有繁體前三回样本，
+   简体回3/6/7 迁移作独立预备步骤、demo（PR7/8）前做。
+5. 跑齐 §8.1 每-PR 门禁（`npm test`+`npx tsc --noEmit` 贴原始输出、TDD 先红、更新 DEVLOG、用户点头才 merge）。
    **PR5 不跑大审查**（按 §8.1 节奏锚点表，下次是 PR6，基线锚到 PR4 合并点 `f41c257`）。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
