@@ -235,16 +235,15 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 ## 10. /clear 后如何接续
 
 > **当前状态快照（2026-06-06）**：**PR1–PR5 全部已并入 main**，main 在 **`42454b7`**（Merge PR #7，PR5 Scene Converter）。
-> **PR6 Validator + Critic + Orchestrator + SSE：设计 + TDD 实现全部完成、每-PR 门禁通过，待大审查 + merge。** 分支 **`pr6-validator-critic-orchestrator`**（基于 main `42454b7`，3 commit：状态同步 + 设计 spec + 实现；**未推 origin、未 merge**）。
-> 分支上 `npm test` = **157 passed | 3 skipped**（PR4/PR5/PR6 三门控冒烟默认 skip），`tsc` 干净，`lint` 干净，`LLM_SMOKE=1` 真端到端冒烟通过（≈48s）。
-> **PR6 是大审查批次**（§8.1）：`pr create` 前必跑 `/code-review`+`/security-review`，diff 基线锚 **`f41c257`**（`git diff f41c257...HEAD`，覆盖 PR5+PR6；直接用 `main...` 会漏掉已并入 main 的 PR5）。
+> **PR6 Validator + Critic + Orchestrator + SSE：设计 + TDD 实现 + 大审查全部完成、每-PR 门禁通过，待用户点头 merge。** 分支 **`pr6-validator-critic-orchestrator`**（基于 main `42454b7`，HEAD `6cbe061`，5 commit：状态同步×2 + 设计 spec + 实现 + 大审查修复；**未推 origin、未 merge**）。
+> 分支上 `npm test` = **162 passed | 3 skipped**（PR4/PR5/PR6 三门控冒烟默认 skip），`tsc` 干净，`lint` 干净，`LLM_SMOKE=1` 真端到端冒烟通过（≈43s）。
+> **大审查已跑**（§8.1，冷读 `f41c257..HEAD` 覆盖 PR5+PR6）：`/code-review` 5 条（1 真 correctness「语义臂吞占位场景」+ 4 健壮性/LOW），`/security-review` 0 条；#1–#4 已 TDD 修掉、#5（abort 孤儿 worker）评估后留。详见 DEVLOG「PR6 大审查」节。
 
-**PR6 接续步骤（实现完成、待大审查 + merge）**：
-1. 读本文件 + `docs/DEVLOG.md` PR6 节 + spec §11（E1–E14 权威增量）。
-2. `git checkout pr6-validator-critic-orchestrator`（HEAD `d08fd7c`：状态同步 + 设计 spec + 实现 commit；`git log` 确认实现 commit 在——**实现已完成、门禁已过、不要重写/不要重跑设计**）。
-3. **大审查（PR6 必跑，尚未跑）**：派 `/code-review`（正确性/复用/简化）+ `/security-review`（安全面）冷读 `git diff f41c257...HEAD`（覆盖 PR5+PR6；**基线必须锚 `f41c257`**，用 `main...` 会漏掉已并入 main 的 PR5），结论交用户；按发现修。
-4. 大审查过 + 用户点头 → 走 §8 PR 流程：push + `pr create --base main` + `pr merge --merge --delete-branch` + 回 main `git pull --ff-only`。
-5. merge 后 → 接 **PR7**（前端核心：输入 + 剧本卡片视图 + YAML 切换 + 导出；消费 `POST /api/convert` 的 SSE 事件契约）。PR7 是单 PR 轻量门禁批次，下次大审查 PR8。
+**PR6 接续步骤（设计 + 实现 + 大审查全完成，待 merge）**：
+1. 读本文件 + `docs/DEVLOG.md` PR6 节（含「PR6 大审查」子节）+ spec §11（E1–E14 权威增量）。
+2. `git checkout pr6-validator-critic-orchestrator`（HEAD `6cbe061`：状态同步×2 + 设计 spec + 实现 + 大审查修复；`git log` 确认实现 + 大审查修复 commit 都在——**全部完成、门禁已过、不要重写/不要重跑设计或审查**）。
+3. **若用户已放行 merge** → 走 §8 PR 流程：push + `"$GH" pr create --base main` + `pr merge --merge --delete-branch` + 回 main `git pull --ff-only`。
+4. merge 后 → 接 **PR7**（前端核心：输入 + 剧本卡片视图 + YAML 切换 + 导出；消费 `POST /api/convert` 的 SSE 事件契约，事件类型见 `lib/agent/events.ts`）。PR7 是单 PR 轻量门禁批次（只走 A 档），**下次大审查 PR8**（锚 PR6 合并点，覆盖 PR7+PR8）。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
