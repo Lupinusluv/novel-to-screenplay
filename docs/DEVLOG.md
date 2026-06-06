@@ -87,3 +87,62 @@
 - 确定性提示词切分必有误差，刻意定位为「候选」而非终稿，把语义精修留给 LLM 层——这是 agent 流水线「确定性工具 + LLM 精修」分工的体现。
 
 **可讲的一句话**：「分章器一行 LLM 都不调——它吃透中文章回体的排版语义(第N回、话说/却说)就把章与场景候选切出来；而真实《红楼梦》语料当场逼出一个合成数据想不到的边界 case（正文里以‘第四回中…’开头的句子），被我们的锚定正则挡下、钉进回归测试。真实语料替我们做了测试设计。」
+
+---
+
+## PR4 · StoryBible Curator —— 设计与评审（实现前，2026-06-06）🔨
+
+> 本节记录 PR4 **写第一行实现代码之前**的真实过程：设计、工具链踩坑、双层评审。代码待 TDD 落地（spec §10 T1–T4）。
+
+**设计（先 brainstorming 后评审）**
+- 选 **map-reduce + 确定性 id 后处理**：逐章 LLM 抽取（map）→ 单次 LLM 合并别名（reduce）→ 确定性代码分配稳定 id → zod 校验。
+- 四个 brainstorming 决策：分章抽取+LLM二次合并 / 确定性代码分配 id / **LLM 给 romanization 提示、代码是 id 权威**（规避拼音库多音字坑）/ 输出只产 schema 已有字段。
+- 设计落 `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md`。
+
+**工具链真实踩坑：gstack 子技能「静默没注册」**
+- AGENTS.md 约定「架构/规划优先 gstack」，但 gstack 的规划子技能（`/plan-eng-review` 等）**从不触发**，一路只走了 superpowers。
+- 逐层挖根因：① Claude Code 技能发现只扫一层，gstack 几十个子技能嵌在 `gstack/` 目录内、只有伞状 `gstack` 被注册，伞状 description 是「headless browser QA」——对「架构/规划」**没有语义触发面**；② 真因是 `./setup`（`set -e`）**先 bun 构建**，撞中文用户名非 ASCII temp 坑 abort，**没走到把子技能摊平成顶层技能的注册步**就退出，且**无报错**——一次失败同时造成「子技能没注册 + Chromium 没下载」。
+- 修复：带 `BUN_CMD`+ASCII `TMPDIR` 重跑 `./setup --host claude --prefix`，构建过关、注册步执行，**52 个 `gstack-*` 技能当场注册、技能表实时刷新**。办法已写进全局 `~/.claude/CLAUDE.md`。
+- **教训**：`set -e` 脚本里「构建在前、注册在后」，构建静默失败会连带吞掉后续步骤；表象（技能不触发）离根因（bun 非 ASCII）很远，靠读 setup 源码逐行定位，而非猜。
+
+**双层评审：本地 plan-eng-review + codex 跨模型冷读**
+- gstack `/plan-eng-review` 四段评审，本地抓到 4 issue（id 兜底不可复现、reduce 是真正的扩展天花板、concurrency 参数过早抽象、prompt 效力无法用 fixture 验证）。
+- 末尾 `codex exec`（read-only 沙箱）独立冷读，**逮到 3 个本地评审和设计都漏的盲点**：① `LocationSchema` 没有 `aliases`——地点别名合并后「荣府」无处存、PR5 解析不到（真·管线断裂）；② 缺 map/reduce 的**中间层 zod schema**（`chatJSON` 只解析不校验）；③ 章节溯源不该全扔——PR5 要靠它按章圈定候选实体，否则得把整本 bible 塞进每个场景 prompt。
+- 结论：6 决策（R1–R6）+ 8 增量（I1–I8）落进 spec §10，作为实现权威依据。
+
+**可讲的一句话**：「我把对单会话的不信任做成了两道**真·外部判官**：gstack 的结构化工程评审 + codex 的跨模型冷读。后者当场逮到三个我和设计都没看见的盲点——其中一个（地点没有别名字段）是会在 PR5 才爆的管线断裂。这再次坐实：绿 ≠ 对，自己看自己的设计有滤镜。」
+
+### PR4 实现纪实（TDD T1–T4，2026-06-06）
+
+**架构落地（map-reduce + 确定性 id 后处理）**
+- `lib/agent/storyBible.ts`：map（逐章 LLM，`Promise.all` 并行）→ reduce（单次 LLM 合并别名）→ `assignIds`（确定性 slug + 去重 + 稳定排序兜底）→ schema-clean 实体 + `provenance` 侧表 → `validateStoryBible` 防御兜底。
+- **id 三权分立**落到代码：LLM 只给 `romanization` 提示，代码 `sanitizeSlug` 是唯一 id 权威。真 DeepSeek 跑出来的 id 干净可读（`char_lin_dai_yu`/`loc_rong_guo_fu`），印证了「LLM 提示 + 代码权威」这条决策。
+- **纯函数全部独立可测**：`assignIds`/`coerceMapEntities`/`computeProvenance`/`sanitizeSlug` 不碰 LLM，先把确定性逻辑 red-green 钉死，再用内容键控 stub 测编排——网络与逻辑彻底分离。
+
+**真实大 bug / 踩坑（最有料的两条）**
+- **真 LLM 逼出的管线裂缝（正是门控冒烟的意义）**：fixture 全绿、tsc 干净后，跑 `LLM_SMOKE=1` 真打 DeepSeek，**当场炸出**——map 阶段真模型会给【地点】也输出 `aliases`，而我按 v1 设计把 `MapLocationSchema` 建成「地点无别名」的 `strictObject`，严格拒绝直接抛错。这是 fixture 永远想不到、只有真模型才暴露的：`aliases` 是 R5 之后的**合法字段**而非脏数据，于是给 map 地点补上 `aliases`（与人物对称）、provenance 同步纳入。**绿 ≠ 对，又一次由真数据证明。**
+- **并发测试 stub 的内容键控陷阱（I7 的真实代价）**：map 改 `Promise.all` 后，stub 必须按内容而非调用顺序路由（I7）。初版按「全部消息内容」匹配章节 token，结果 `MAP_SYSTEM` 里写的示例「（如「宝玉/宝二爷」）」命中了**每一个** map 调用——第 3 章被误路由到第 2 章的 fixture，provenance 串味成 `[1,2,3]`。靠 debug 打印定位后，改成**只匹配 user 消息（章节正文）**修复。教训：内容键控的「内容」要精确到消息角色，prompt 里的示例文本是隐形污染源。
+
+**一个被真数据纠正的叙事**
+- PR3 DEVLOG 曾设想「宝玉/黛玉/凤姐多称呼是 PR4 alias 合并的演示弹药」。真跑发现：**截断版前三回里寶玉本人尚未登场**（模型抽到的是石頭/頑石/美玉——通灵宝玉的前身），demo 弹药其实是 **賈雨村（雨村/賈化/太爺/本府知府 四别名合并）、林黛玉、榮國府/榮府（地点别名，R5 实证）**。冒烟测试目标据此纠偏。提醒：叙事要跟着真数据走，别照搬旧假设。
+
+**一个工程判断（门控机制 vs 锁定 spec）**
+- spec R4 写「冒烟仅凭检测到 `DEEPSEEK_API_KEY` 就跑」，目标却是「合 §8.1：npm test 默认不烧 key」。但本机 env **常驻** `DEEPSEEK_API_KEY`，纯按 key 门控会让每次 `npm test` 都真打 DeepSeek——与 §8.1 自相矛盾（R4 作者没料到 key 常驻）。把分歧摆给用户，决定改为 **`LLM_SMOKE=1` 显式 opt-in + key 双条件**：默认（含本机）一律 skip，CI 无 key 也 skip，合 §8.1 硬约束、仅轻微偏离 R4 字面而忠于其本意。**锁定的 spec 也可能内部不一致，照搬字面不如忠于意图——但偏离要交用户拍板。**
+
+**门禁证据**
+- TDD：T1–T4 每个新函数/分支先红后绿（schema 拒识、配置回退、id 兜底、合并、provenance、错误冒泡均先看失败）。
+- `npm test`：**74 passed | 1 skipped**（含审查补的章回正则测试；冒烟默认 skip）；`npx tsc --noEmit` 干净；`LLM_SMOKE=1` 真冒烟 **1 passed（15.9s，真打 DeepSeek）**。
+- 大审查（`/code-review`+`/security-review`，diff 锚 `dd47ed3` 覆盖 PR3+PR4）在 `pr create` 前跑——见下节。
+
+**可讲的一句话**：「fixture 全绿、类型干净之后，我特意花一次真 DeepSeek 调用跑门控冒烟——它当场炸出一个 fixture 永远测不到的管线裂缝（真模型给地点也输出别名，被我的严格 schema 拒掉）。这就是为什么我坚持留一道**真模型**的闸：合成数据能证明逻辑对，但只有真数据能证明**契约对**。」
+
+### PR4 大审查（`/code-review` + `/security-review`，冷读 `dd47ed3..HEAD`）
+
+§8.1 规定每 2 PR 一次冷上下文大审查，PR4 是审查批次、基线锚 `dd47ed3`（覆盖 PR3 分章器 + PR4 curator）。用两个**新生 agent 冷读**（不是我凭记忆审自己刚写的代码——那有滤镜），加 `/security-review` 子任务流。
+
+- **安全面：零发现。** 纯数据变换库，无 SQL/命令/反序列化/路径/鉴权 sink；唯一可疑向量（`provenance` 用实体 id 当对象键）被 `char_`/`loc_` 前缀 + `sanitizeSlug` 白名单（`[a-z0-9_]`）堵死，`__proto__`/`constructor` 不可达，无原型污染。
+- **正确性：1 个中危 + 若干低危。** 中危是 PR3 遗留、本批次首次审到——`CHAPTER_HEADING` 正则**强制**标题前有空白分隔符，导致 `第一回甄士隱…`（标题紧贴、无空格）**整行不匹配** → 该回未被识别、并入上一回。样本用全角空格才侥幸通过。但该「护栏」**正是 PR3 用来挡正文假标题 `第四回中…，此回暂不写。` 的机制**（见上方回归测试），不能直接拆。
+- **修法（用户拍板：先标点护栏，后续如再现误判再上序号单调）**：正则把分隔符改为可选，但把标题字符集限制为**不含句子标点**（`。！？，、；：…` + ASCII）——真章回标题从不含句读，散文续句必含。一条规则同时满足两个约束：`第一回甄士隱…　賈雨村…`（仅全角空格）通过，`第四回中…，此回暂不写。`（含 `，。`）被拒。TDD 先红（无分隔符标题只切出 1 章）后绿，原 `第四回中…` 回归测试保持绿。
+- **低危（记录不改，理由附 PROJECT 待办）**：`assignIds` 纯数字 romanization 与位置兜底撞 id（唯一性仍保持，LLM 给拼音几乎不可能）；`computeProvenance` O(N×C) 全本扩展性（3 章无感）；char/loc 四 schema + 双胞胎管线重复（spec 已接受对称重复）；`provenance` 跨表 spread 被前缀设为不可达。
+
+**可讲的一句话**：「大审查最有价值的一刀不在我刚写的 PR4，而在搭着一起审的 PR3：冷读 agent 指出分章正则强制空格分隔符，会漏掉‘标题紧贴’的章回标题。但那道空格要求又正是挡正文假标题的护栏——直接拆会破回归。真正的修法是换个判据（标题不含句读 vs 散文必含句读），一条规则同时满足‘收得进真标题、挡得住假标题’。审查的价值是逼你把‘侥幸通过’变成‘想清楚为什么通过’。」

@@ -47,7 +47,7 @@ scenes:
 | `scenes` | `Scene[]` | 有序场景列表 |
 
 **Character**：`id`、`name`（必填）；`aliases`（缺省 `[]`）、`description`、`arc`（可选）。
-**Location**：`id`、`name`（必填）；`description`（可选）。
+**Location**：`id`、`name`（必填）；`aliases`（缺省 `[]`）、`description`（可选）。`aliases` 与 Character 对称——StoryBible Curator 把「荣国府/荣府」这类同地多称归并到一个 `loc_*` id，下游场景头按 id 引用，地名再乱也不分裂。
 **Scene**：`id`、`heading`、`synopsis`、`source`、`elements`（必填）；`needs_review`（可选，自纠超限时由 Critic/Orchestrator 打标）。
 **Element**：按 `type` 区分的判别联合（discriminated union）：
 - `action` → `{ type, text }`

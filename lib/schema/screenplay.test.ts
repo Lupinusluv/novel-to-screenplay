@@ -44,6 +44,18 @@ describe("ScreenplaySchema", () => {
     });
     expect(parsed.characters[0].aliases).toEqual([]);
   });
+
+  it("accepts location aliases and defaults them to [] when omitted", () => {
+    const parsed = parseScreenplay({
+      ...validScreenplay(),
+      locations: [
+        { id: "loc_rongguo", name: "荣国府", aliases: ["荣府"] },
+        { id: "loc_bare", name: "大观园" },
+      ],
+    });
+    expect(parsed.locations[0].aliases).toEqual(["荣府"]);
+    expect(parsed.locations[1].aliases).toEqual([]);
+  });
 });
 
 describe("checkReferentialIntegrity", () => {

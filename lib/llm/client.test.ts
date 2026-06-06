@@ -126,4 +126,32 @@ describe("loadLLMConfigFromEnv", () => {
   it("throws a helpful error when required vars are missing", () => {
     expect(() => loadLLMConfigFromEnv({})).toThrow(/LLM_API_KEY/);
   });
+
+  it("falls back to DeepSeek when no LLM_* are set but DEEPSEEK_API_KEY is", () => {
+    const cfg = loadLLMConfigFromEnv({ DEEPSEEK_API_KEY: "sk-deep" });
+    expect(cfg.baseUrl).toBe("https://api.deepseek.com");
+    expect(cfg.model).toBe("deepseek-chat");
+    expect(cfg.apiKey).toBe("sk-deep");
+  });
+
+  it("prefers explicit LLM_* over the DeepSeek fallback", () => {
+    const cfg = loadLLMConfigFromEnv({
+      LLM_BASE_URL: "https://example.com/v1",
+      LLM_API_KEY: "sk-explicit",
+      LLM_MODEL: "gpt-x",
+      DEEPSEEK_API_KEY: "sk-deep",
+    });
+    expect(cfg.baseUrl).toBe("https://example.com/v1");
+    expect(cfg.apiKey).toBe("sk-explicit");
+    expect(cfg.model).toBe("gpt-x");
+  });
+
+  it("errors on partial LLM_* even with a DeepSeek key (no silent fallback) (I8)", () => {
+    expect(() =>
+      loadLLMConfigFromEnv({
+        LLM_BASE_URL: "https://example.com/v1",
+        DEEPSEEK_API_KEY: "sk-deep",
+      }),
+    ).toThrow(/LLM_API_KEY/);
+  });
 });

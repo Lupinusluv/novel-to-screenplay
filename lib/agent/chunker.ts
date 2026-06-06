@@ -13,9 +13,18 @@
  * and Scene Converter (LLM stages) refine it later.
  */
 
-/** A chapter heading like `第一回` / `第1章`, line-anchored. */
+/**
+ * A chapter heading like `第一回` / `第1章`, line-anchored.
+ *
+ * The title may follow the marker with OR without a separating space
+ * (`第一回　甄士隱…` and `第一回甄士隱…` are both headings). To keep an in-text
+ * reference such as `第四回中既将…，此回暂不写。` from being misread as a heading,
+ * the title is restricted to characters that don't carry sentence punctuation
+ * (。！？，、；：… and ASCII equivalents) — a prose continuation always does, a
+ * real 章回 title never does.
+ */
 const CHAPTER_HEADING =
-  /^[ \t　]*(第\s*[0-9〇零一二三四五六七八九十百千两]+\s*[章回])(?:[ \t　]+(.*?))?[ \t　]*$/;
+  /^[ \t　]*(第\s*[0-9〇零一二三四五六七八九十百千两]+\s*[章回])[ \t　]*([^。！？，、；：…．,.!?;:]*?)[ \t　]*$/;
 
 export interface SceneCandidate {
   /** 0-based index within the chapter. */

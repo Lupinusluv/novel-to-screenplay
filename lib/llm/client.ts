@@ -239,9 +239,20 @@ function mergeSignals(
 export function loadLLMConfigFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): LLMConfig {
-  const baseUrl = env.LLM_BASE_URL;
-  const apiKey = env.LLM_API_KEY;
-  const model = env.LLM_MODEL;
+  let baseUrl = env.LLM_BASE_URL;
+  let apiKey = env.LLM_API_KEY;
+  let model = env.LLM_MODEL;
+
+  // DeepSeek fallback: only when *none* of the explicit LLM_* are set and a
+  // DEEPSEEK_API_KEY is present. A *partial* LLM_* config falls through to the
+  // missing-vars error below rather than silently falling back (I8) — mixing a
+  // half-specified endpoint with DeepSeek defaults would be a surprising trap.
+  if (!baseUrl && !apiKey && !model && env.DEEPSEEK_API_KEY) {
+    baseUrl = "https://api.deepseek.com";
+    apiKey = env.DEEPSEEK_API_KEY;
+    model = "deepseek-chat";
+  }
+
   const missing = [
     !baseUrl && "LLM_BASE_URL",
     !apiKey && "LLM_API_KEY",
