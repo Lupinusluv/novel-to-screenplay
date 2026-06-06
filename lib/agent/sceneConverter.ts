@@ -461,16 +461,50 @@ function castLine(e: { name: string; aliases?: string[] }): string {
   return aliases.length ? `${e.name}（亦称：${aliases.join("、")}）` : e.name;
 }
 
-function buildScenePrompt(body: string, cast: ScopedCast): ChatMessage[] {
+/**
+ * Feedback for a retry (D1). When the Validator (deterministic) or Critic
+ * (semantic) finds a problem, the orchestrator passes the prior attempt's
+ * critique (and optionally the prior scene) back so a temperature:0 retry
+ * actually changes its output — otherwise an identical input reruns identically.
+ */
+export interface SceneRevision {
+  /** Problems with the prior attempt (deterministic feedback or Critic advice). */
+  critique: string[];
+  /** The prior scene, so the model revises rather than restarts. Optional. */
+  prior?: Scene;
+}
+
+/** The revision feedback as a trailing user message (append-only, E13). */
+function revisionMessage(revision: SceneRevision): ChatMessage {
+  const bullets = revision.critique.map((c) => `- ${c}`).join("\n");
+  const priorLine = revision.prior
+    ? `\n上一版结果（供修订参考）：\n${JSON.stringify(revision.prior)}`
+    : "";
+  return {
+    role: "user",
+    content:
+      `上一版转换存在以下问题，请据此修订（仍只用所给人物/地点称呼、忠实原文、严格 JSON）：\n` +
+      `${bullets}${priorLine}`,
+  };
+}
+
+function buildScenePrompt(
+  body: string,
+  cast: ScopedCast,
+  revision?: SceneRevision,
+): ChatMessage[] {
   const chars = cast.characters.map(castLine).join("；") || "（无）";
   const locs = cast.locations.map(castLine).join("；") || "（无）";
-  return [
+  const messages: ChatMessage[] = [
     { role: "system", content: SCENE_SYSTEM },
     {
       role: "user",
       content: `人物表：${chars}\n地点表：${locs}\n\n场景原文：\n${body}`,
     },
   ];
+  // Append-only: a first pass (no revision) is byte-for-byte the PR5 shape.
+  if (revision) messages.push(revisionMessage(revision));
+  return messages;
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +526,7 @@ export async function convertScene(
   chapter: number, // 1-based, aligns with SceneSourceSchema.chapter
   bible: StoryBible,
   llm: LLMClient,
+  revision?: SceneRevision, // D1: optional retry feedback, append-only (E13)
 ): Promise<SceneConversionResult> {
   const sceneId = `scene_${chapter}_${candidate.index + 1}`;
 
@@ -522,7 +557,7 @@ export async function convertScene(
   // 3) LLM call. Distinguish JSON-parse failure (I8) from shape failure below.
   let raw: unknown;
   try {
-    raw = await llm.chatJSON(buildScenePrompt(body, cast), { temperature: 0 });
+    raw = await llm.chatJSON(buildScenePrompt(body, cast, revision), { temperature: 0 });
   } catch (err) {
     throw new Error(
       `Scene Converter ${sceneId}: LLM response was not parseable JSON: ${

@@ -176,3 +176,30 @@
 - **合并落点**：用户放行后走 §8 流程，PR **#7** `--merge` 入 main，merge commit **`42454b7`**，分支已删（本地+远程）。合并前重跑门禁复核绿（`tsc` exit 0、`npm test` 122 passed | 2 skipped）。
 
 **可讲的一句话**：「最危险的 bug 是‘结构有效的语义谎言’——codex 冷读逮到我原本的地点回退会永远填‘荣国府’，还能骗过引用完整性校验，比一个明显的未解析更难发现。修法不是抛错（那会破坏‘最佳努力’边界），而是回退到**中性的最小 id 地点 + 醒目标 `heading unverified` + needs_review**：让谎言**显形**而不是消失。然后真模型冒烟又反过来教育了我——它把‘黛玉进府’忠实转成纯叙述、把地点选成‘神京’，证明我连样本里有没有对白都记错了，也实证了我们提前把语料迁移 defer 出 PR5 是对的。」
+
+## PR6 · Validator + Critic + Orchestrator + SSE —— 收尾闭环（2026-06-06）✅
+
+> 设计见 spec `docs/superpowers/specs/2026-06-06-pr6-validator-critic-orchestrator-design.md`（§11 是 codex 跨模型冷读的权威增量 E1–E14）。本节记录 TDD 实现纪实。设计阶段走 gstack-spec 五段 + codex 冷读；用户选「直接进 TDD」（跳过 plan-eng-review）。
+
+**这是什么**：把前 5 个 PR 的零件串成端到端管线。新增四组件（+ 一个共享事件契约 + SSE 编码器）：
+- `lib/agent/events.ts`：`Stage` + `PipelineEvent` 联合（含末帧 `final_result`、`error`）。**单独成文件**而非塞进 orchestrator（spec §9 原写在 orchestrator）——这样纯函数 `eventToSSE` 不必 import orchestrator（会拖进全部 agent），避免循环、编码器可独立测。
+- `lib/agent/sse.ts`：`eventToSSE` 纯函数，typed event 通道 `event: <type>\ndata: <json>\n\n`（E9）。
+- `lib/agent/validator.ts`：`validateScreenplay`（整部门禁：结构 + 引用 + 跨章 id 去重 + needs_review 普查，D3/E11）+ `validateScene`（防御性富报告，E12）。
+- `lib/agent/critic.ts`：第二个纯 LLM agent，语义自评（人物矛盾/称谓不一/漏对白/偏离原文），只报问题 + 建议、不改写；`ok = 无 major`，minor 不触发重试。沿用 PR4 I7（system 无实体示例，stub 纯按 user 消息路由）+ 形状 coerce/throw 二分。
+- `lib/agent/orchestrator.ts`：`runPipeline` + `pipelineToSSEStream`；`sceneConverter.ts` 加可选 `revision` 参数（D1）。
+- `app/api/convert/route.ts`：Next 16 SSE 路由，极薄（实现前读了 `node_modules/next/dist/docs/` 的 route-handlers + streaming，确认 `new ReadableStream({start})` + `new Response(stream, headers)`、`runtime="nodejs"` + `dynamic="force-dynamic"`）。
+
+**codex 冷读如何改了架构（最能讲的）**：草案的重试循环是「确定性臂跑完→语义臂跑完」两段。codex 冷读（6/10，17 条）逮到致命的一条：**Critic 改写一个场景后，没人再跑确定性复检**——Critic 可能把场景改出新的未解析引用，却直接收尾。修法（E1）把循环改成**双层不动点**：每次 convert（含语义改写）后都先「确定性修复到不动点」，Critic 只看已 settle 的场景。又补了：① convertScene 的 **throw 纳入重试预算**（坏 JSON/坏 shape 重试，耗尽插占位 needs_review 场景 + 发 error 事件，不让一个坏场景毁掉整部，E2）；② temp=0 下**同样 critique 复现同样坏场景**→ 不动点哈希早停（E3）；③ 两臂 critique 不同仍可能 A→B→A **振荡** → 跨臂 `seen` 哈希环检测（E5）；④ **并行不打乱章节序**（按全局序归位再汇编，E5b）；⑤ 末帧改 typed `final_result` 事件（E10）；⑥ abort 链路 + Next runtime 锁定（E7/E8）。还修了我自己引入的 `validateScreenplay` 签名不一致（E11）。
+
+**TDD 证据（先红后绿，逐组件）**：
+- 每个组件都先写测试看失败（module 不存在 / 行为缺失），再最小实现到绿。
+- `sse`（4）→ `validator`（8，T1–T5）→ `sceneConverter` D1（+4，T6/T7：**关键回归 T7 断言不传 revision 时 prompt 与 PR5 逐消息一致**，48 个 PR5 测全绿不受影响）→ `critic`（6，T8–T10）→ `orchestrator`（13，T12–T22 + 2 条 `pipelineToSSEStream` 流测）→ smoke（1，门控）。
+- 自纠循环的两个「早停」用调用计数钉死区分：**T13 预算耗尽**（每场景 distinct → 1+budget=3 次 convert）vs **T19 不动点早停**（identical → 2 次就停）；**T14 语义重试**（distinct → critique 多次）vs **T20 环检测**（identical → critique 只 1 次就停）。
+
+**门禁证据**：
+- `npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净（0 warning）；`npm test` = **157 passed | 3 skipped**（PR4/PR5/PR6 三个门控真冒烟默认 skip）。
+- **`LLM_SMOKE=1` 真端到端冒烟 1 passed（≈48s，真打 DeepSeek）**：繁體前三回样本跑通 chunk→curate→9 场景 convert+critic+retry→assemble→SSE→YAML，`validateScreenplay` 门禁干净（结构/引用/重复 id 全空）、scenes 顺序正确、`stage_progress` 计到 total、`final_result` 的 YAML 可 `fromYAML` 往返。**PR5 那次冒烟逼出的「样本对白稀」叙事在这里复现且无害**——smoke 只断契约不断对白数（同一教训）。
+
+**与 spec 的偏差（记录）**：① 事件类型独立成 `events.ts`（见上，避免循环）；② `validateScene` 作为**独立可测工具**导出、未塞进 orchestrator 循环——因为 `convertScene` 自身的 `sceneReferentialCheck` 已对 dangling 引用 throw（被 orchestrator 的 E2 路径接住），再跑一遍 validateScene 是无法触发的死分支，TDD 下不写无测试的分支。`validateScreenplay` 则在 T12 作为整部门禁被实测。
+
+**可讲的一句话**：「外部模型冷读救了这个 PR 的命门——我把自纠循环写成‘先修引用、再修语义’两段，看着合理，但 codex 一眼看穿：Critic 改完场景没人再查引用，等于语义臂能把我刚修好的引用又改坏。修法是把它变成‘每次改写后都重新收敛到确定性不动点’的双层循环，再加不动点早停和环检测，这样 temperature=0 的重试既不会白跑、也不会无限振荡。然后真端到端冒烟 48 秒跑通九个场景的转换+审稿+重试，证明四个 agent 真的协同工作，不只是单测里的桩。」
