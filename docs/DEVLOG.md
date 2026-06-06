@@ -256,3 +256,28 @@
 - **真浏览器实跑（E11，demo 主轴硬约束）**：Chrome dev server（playwright MCP 驱动）选内置示例（繁體前三回，4546 字）→ 转换 → Network 确认 `GET /api/sample 200` + `POST /api/convert 200`（SSE）；时间线**逐步点亮**（场记✓→设定集✓→场景编剧 8/9→9/9→导演✓，非一次性刷出）、9 张场景卡片**流式出现**、切 YAML 看到权威源码（场景自然数序 `scene_1_1…scene_3_4`）、导出按钮就位。真 DeepSeek 端到端 ≈30s 跑通。
 
 **可讲的一句话**：「前端最容易写成‘点按钮、等 40 秒、啪一下出结果’——那等于把流式后端白做了。所以 PR7 的主轴是 agent 时间线随 SSE 实时点亮，让评审**看见**四个 agent 在干活。技术上被一个事实逼着走对路：`POST` 不能用原生 `EventSource`，只能 `fetch`+手动 reader+`TextDecoder` 按 `\n\n` 切帧——而 codex 冷读一眼点出两个我不会自己想到的坑：中文多字节会在字节边界被拆成两个 chunk（不 `stream:true` 就乱码），以及后端的 scene 级 error 其实是‘这一场没救了但整部继续’的 warning、不能拿来杀掉整个转换。这两条都写进了单测，最后用真浏览器的 Network 面板确认 chunk 是真的逐步到达、UI 是真的逐步更新，而不是单测里的桩。」
+
+## PR8 · 最后阶段打磨：场景溯源 + YAML 回灌编辑 + 空/错态（2026-06-07）✅
+
+> 设计走 gstack（`/gstack-spec` + codex 冷读，spec 落 `docs/superpowers/specs/2026-06-07-pr8-traceability-edit-polish-design.md`，**不叠 superpowers brainstorming**）；实现交 superpowers TDD。**PR8 是大审查节点**——`pr create` 前跑 `/code-review`+`/security-review` 冷读 `git diff 69ff533...<head>`（覆盖 PR7+PR8）。范围中途由用户砍轻：demo 录屏 + README 拆到 PR9。
+
+**做了什么**：把 PR7 的「只读」前端补成产品一句话的完整闭环——「结构化、**可编辑**、**可溯源**」。三件事：① 每张场景卡加「溯源」弹层，把场景钉回小说原文并高亮（反幻觉信任闭环）；② YAML 源码视图改为**可回灌编辑**——改 YAML → 应用 → zod 校验通过则驱动卡片视图 + 导出一起更新；③ 空/错/待复核态全枚举 + 统一视觉（含 `busy` 防重复提交、错态「重试」、needs_review 徽章展开看原因）。
+
+**架构延续 PR7 分层（纯逻辑进 `lib/client`，node 单测；组件薄）**：
+- `lib/client/locateExcerpt.ts`（命门，纯函数）：excerpt → 原文 UTF-16 偏移，**三级回退**——精确 `indexOf`（去末尾省略号）→ 首段锚点（chunker 丢单空行后整段会失配，但首段始终是原文连续子串）→ 空白归一化搜索（`normalizeWithMap` 把 CRLF/全角空格/tab/丢空行折叠成单空格，带 offset-map 映回原文偏移）。
+- `lib/client/applyEdit.ts`（YAML 回灌的解析+校验，**E10 窄例外**：唯一 import `lib/schema` 运行时——schema 是前后端共用的 pure/无 fs 模块，非 `lib/agent`）：包 `fromYAML`+`checkReferentialIntegrity`，补 zod 不覆盖的不变量（id 唯一、≥1 场景、长度护栏），结构/语法错 → `{ok:false,error}`（旧态不破坏），断引用 → `{ok:true,refWarnings}`（应用但警示）。
+- 组件：`SourceModal`（溯源弹层，a11y 完整）/ `SceneCard`（加溯源按钮 + needs_review 展开）/ `YamlView`（重写为可编辑）/ `ScreenplayView`（透传 novel/warnings/canEdit/onApply + 流式骨架）/ `ConverterApp`（`edited` overlay + `sourceNovel` 快照 + `busy` + 重试 + 空态引导卡）。
+
+**关键 taste call —— `edited` overlay 不进 reducer**：`pipelineState` 是 SSE 流的纯投影（E4 runId 可重放靠它）；用户编辑是流之外的另一来源，塞进 reducer 会污染可重放性。改在 `ConverterApp` 层用 `edited?: Screenplay` overlay 合流，派生 `displayScreenplay/displayScenes/displayYaml` 驱动所有视图 + 导出，start/cancel/重试 一律先清 `edited`。**`sourceNovel` 快照**同理：溯源高亮用「本轮转换时的原文」而非实时输入框（否则转换后又改输入框，溯源会去搜被改过的文本）。
+
+**codex 冷读（read-only, medium，初版 SCORE 6.5/10）逮到 20 条（E1–E20），全 triage 写回 spec §12**——最能讲的几条：
+- **E2 快照**：`novel` 是实时可编辑态 → `startConversion` 时 `setSourceNovel(novel)` 冻结给下游。
+- **E7 XSS**：原文高亮**禁** `dangerouslySetInnerHTML`（小说是用户粘贴文本，innerHTML 注入即 XSS）——改用 React 文本节点 `{before}<mark>{hit}</mark>{after}` + `whitespace-pre-wrap`，天然转义（写了断言测试）。
+- **E3 锚点不越界**：首段锚点命中后 `end = start + anchor.length`，**不**延到整段 excerpt 长度（否则盖到不相关后文）。
+- **E12 重复 id**：schema 不去重 → 重复 id 会砸 React key/引用/导出；`applyEdit` 加唯一性校验 → `ok:false`。
+- **E1/E6 已知限制（明示保留）**：`locateExcerpt` 整本搜索取首个命中，不按章裁剪——前端无章偏移，按章需复刻 chunker（违 E10）；120 字叙事 head 够独特、碰撞罕见，弹层 excerpt 文本始终正确，仅高亮位置可能偏。
+
+**TDD 证据（先红后绿，逐单元）**：纯逻辑 `locateExcerpt`（11，含精确/锚点/归一化/CJK UTF-16 偏移/代理对/多次出现取首/未命中兜底 + `normalizeWithMap` 直测）→ `applyEdit`（8，合法/语法错/zod 路径可读/重复 id/空场景/断引用/空串/超长）；组件 `SourceModal`（7，开合/高亮 `<mark>`/未命中兜底/XSS 不注入/Esc/遮罩 vs 面板 mousedown/aria）/ `SceneCard`（+2，溯源开弹层、徽章展开 message）/ `YamlView`（6，只读态/应用成功 onApply/语法错不调 onApply/断引用警告/重置）/ `ScreenplayView`（+4，novel 透传/warning 关联/编辑回灌 onApply/流式骨架）/ `ConverterApp`（+5，busy 禁用/重试/编辑回灌反映 header/新一轮作废 overlay/sourceNovel 快照survives 输入改动）。每个先看 RED 再最小实现到绿。
+
+**门禁证据**：`npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净（0 warning——E19「场景被替换关弹层」原用 `useEffect`+`setState` 被 `react-hooks/set-state-in-effect` 拦下，改为「弹层 open-state keyed by 场景身份」的派生渲染，更优且无副作用）；`npm test` = **252 passed | 3 skipped**（+43 新测，既有 209 不回归）。
+- **真浏览器实跑（demo 闭环硬约束）**：待补（PR8 收尾，playwright MCP）——转换 → 点溯源跳高亮 → 改 YAML 应用 → 卡片刷新 → 导出编辑后内容。
