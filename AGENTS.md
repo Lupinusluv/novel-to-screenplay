@@ -18,10 +18,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 **Git/PR 工作流**：branch-per-PR，`main` 为集成主干。仓库 `github.com/Lupinusluv/novel-to-screenplay`（private）。`gh` 全路径 `"C:\Program Files\GitHub CLI\gh.exe"`（工具 shell PATH 未刷新）。流程见 `docs/PROJECT.md §8`。
 
-**进度**：PR1（LLM client）/ PR2（Schema+YAML+SCHEMA.md）/ PR3（Chunker+红楼梦样本）✅ **均已合并**，main 在 `083d4b6`。**下一个：PR4 StoryBible Curator**（首个 LLM agent：扫全文产人物/地点表，aliases 合并，稳定 id）。PR 路线图与进度见 `docs/PROJECT.md §6`。
+**进度**：PR1（LLM client）/ PR2（Schema+YAML+SCHEMA.md）/ PR3（Chunker+红楼梦样本）/ PR4（StoryBible Curator：首个 LLM agent，map-reduce 产人物/地点表，aliases 合并，稳定 id + provenance）✅ **均已合并**，main 在 `f41c257`。`npm test` = 74 passed | 1 skipped、`tsc` 干净。**下一个：PR5 Scene Converter**（单场景 → elements，强制引用 Bible id）。PR 路线图与进度见 `docs/PROJECT.md §6`。
 
-**质量门禁（强制，见 `docs/PROJECT.md §8.1`）**：每 PR 必跑 `npm test`+`npx tsc --noEmit`（贴原始输出）、TDD 先红、更新 `docs/DEVLOG.md`、用户点头才 merge。冷上下文大审查（`/code-review`+`/security-review`）每 2 PR 一次——**PR4 是审查批次**，diff 基线须锚到 `dd47ed3`（覆盖 PR3+PR4，详见 §8.1）。
+**质量门禁（强制，见 `docs/PROJECT.md §8.1`）**：每 PR 必跑 `npm test`+`npx tsc --noEmit`（贴原始输出）、TDD 先红、更新 `docs/DEVLOG.md`、用户点头才 merge。冷上下文大审查（`/code-review`+`/security-review`）每 2 PR 一次——**PR4 已审过；下次是 PR6**，基线锚到 PR4 合并点 `f41c257`（覆盖 PR5+PR6，详见 §8.1）。**PR5 只走每-PR 轻量门禁、不跑大审查。**
 
-**PR4 起步须知**：① LLM 配置缺口——环境仅有 `DEEPSEEK_API_KEY`，无 `LLM_BASE_URL`/`LLM_MODEL`，需让配置层支持 DeepSeek（baseURL `https://api.deepseek.com`，model 待定），单测走 fixture 不烧 key；② 待议决策（样本改简体、红楼章节选择）见 `docs/PROJECT.md §6` 下方备注；③ PR4 是创意性 LLM agent，**先 brainstorming 设计再 TDD**。
+**PR5 起步须知**：① LLM 配置已就绪——`loadLLMConfigFromEnv` 三者全缺时回退 DeepSeek（baseURL `https://api.deepseek.com`、model `deepseek-chat`），单测走 fixture、真冒烟用 `LLM_SMOKE=1` opt-in；② 待议决策（样本是否改简体、红楼取哪几回作 demo）到 PR5/demo 阶段该定，见 `docs/PROJECT.md §6` 下方备注；③ PR5 是创意性 LLM agent，**先 brainstorming 设计再 TDD**；④ PR5 复用 PR4 产出的 `StoryBible`（带稳定 id + `provenance` 章号侧表）作跨章共享记忆，场景转换须强制引用 Bible id。
 
-**接续步骤**：① 读 `docs/PROJECT.md`（单一事实来源）+ `docs/DEVLOG.md`（开发纪实）；② `git checkout main && git pull --ff-only`；③ 找 §6 下一个未完成 PR（当前 PR4）；④ 按 §8/§8.1 开分支、TDD、跑门禁。
+**接续步骤**：① 读 `docs/PROJECT.md`（单一事实来源，§10 接续步骤）+ `docs/DEVLOG.md`（开发纪实）；② `git checkout main && git pull --ff-only`（顶端应为 `f41c257` Merge PR #6）；③ 找 §6 下一个未完成 PR（当前 PR5）；④ 按 §8/§8.1 开分支、（PR5 先 brainstorming）TDD、跑门禁。

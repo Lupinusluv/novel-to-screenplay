@@ -135,16 +135,16 @@ scenes:
 - [x] **PR1 脚手架 + LLM client + 配置** — ✅ 已合并(#1)。Next.js 脚手架种子 + `lib/llm/client.ts`(OpenAI 兼容、超时/重试/extractJSON) + vitest(11 测试) + `.env.example`。
 - [x] **PR2 Schema + 文档** — ✅ 完成。`lib/schema/screenplay.ts`(zod，strict + 判别联合 + 引用完整性)+`lib/schema/yaml.ts`(round-trip，关 anchor) + `docs/SCHEMA.md`(7 项设计论证)；15 测试(schema 9 + yaml 6)。
 - [x] **PR3 Chunker + 示例小说** — ✅ 完成。`lib/agent/chunker.ts`(确定性分章/两遍分场景：分隔行+大空行+转场提示词) + `samples/honglou-meng-ch1-3.txt`(公有领域《红楼梦》前三回真实文本)；13 测试(含真实样本冒烟 + 锚定正则拒绝正文「第四回中…」回归)。
-- [x] **PR4 StoryBible Curator** — 🔨 **TDD 实现完成 + 大审查已过，待 merge**。分支 `pr4-storybible`（**尚未并入 main**）。
+- [x] **PR4 StoryBible Curator** — ✅ **已并入 main（#6，merge commit `f41c257`）**。
   `lib/agent/storyBible.ts`：map-reduce + 确定性 id 后处理（`assignIds`/`sanitizeSlug`）、人物**与地点**别名合并、
   `provenance` 侧表（R6）、中间层 zod（I1）+ 强校验 `validateStoryBible`（I2）；`LocationSchema.aliases`（R5）、
-  `loadLLMConfigFromEnv` DeepSeek 回退（I8）。**75 测试**（含 1 门控真 LLM 冒烟，默认 skip）；`tsc` 干净。
+  `loadLLMConfigFromEnv` DeepSeek 回退（I8）。**74 passed | 1 skipped**（含 1 门控真 LLM 冒烟，默认 skip）；`tsc` 干净。
   设计依据见 `docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md §10`（R1–R6 + I1–I8）。
   实现纪实与真数据逼出的修复见 `docs/DEVLOG.md` PR4 实现纪实节。
   （**门控决策**：真冒烟用 `LLM_SMOKE=1` 显式 opt-in + key 双条件，默认/本机/CI 均 skip，合 §8.1。）
-  （**大审查已跑**：`/code-review`+`/security-review` 冷读 `dd47ed3..HEAD`。安全零发现；正确性 1 中危已修——
+  （**大审查已过**：`/code-review`+`/security-review` 冷读 `dd47ed3..HEAD`。安全零发现；正确性 1 中危已修——
   分章正则强制空格分隔符会漏「标题紧贴」章回，改为「分隔符可选 + 标题禁含句读」的标点护栏，TDD 先红后绿，
-  原 `第四回中…` 假标题回归仍绿。低危发现 defer，见下方「PR4 审查 defer 项」。）
+  原 `第四回中…` 假标题回归仍绿。低危发现 defer，见下方「PR4 审查 defer 项」。详见 DEVLOG「PR4 大审查」节。）
 
 > **待议决策（defer 到对应 PR，勿遗忘）**：
 > - **示例小说改用简体**（便于 demo 展示）。当前 `samples/honglou-meng-ch1-3.txt` 是繁體红楼梦；换简体样本时同步更新 chunker 的繁體 cue 冒烟测试（繁體 cue 支持可保留作健壮性）。—— 到 PR5 / demo 阶段定。
@@ -210,9 +210,9 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 **B. 每累计 2 个 PR 跑一次（重量级冷上下文大审查）**
 5. **冷上下文对抗复核**：在第 2、4、6…个 PR 的 `pr create` 之前，派 `/code-review`（正确性/复用/简化）+ `/security-review`（安全面）各跑一次，用**独立上下文冷读这两个 PR 的合并差异**，结论交用户。中间的 PR（第 1、3、5…）只走 A 档，不跑大审查，避免托节奏。
 
-> 节奏锚点：PR2 已跑大审查 ✅。**下一次大审查节点 = PR4**（覆盖 PR3 + PR4 的差异），之后 PR6、PR8。是否到节点不由 Claude 临场判断——按本表 PR 序号对照。
+> 节奏锚点：PR2 ✅、**PR4 ✅（已跑，锚 `dd47ed3` 覆盖 PR3+PR4）**。**下一次大审查节点 = PR6**（覆盖 PR5 + PR6），之后 PR8。是否到节点不由 Claude 临场判断——按本表 PR 序号对照。**PR5 只走 A 档、不跑大审查。**
 >
-> **PR4 大审查基线（重要，防遗忘）**：PR3 已先行合并，故 PR4 冷审查必须把 diff 基线**锚到 PR3 合并之前**的 commit `dd47ed3`（PR2 合并点），即 `git diff dd47ed3...<pr4-head>`，这样才能覆盖 PR3+PR4 两批改动。直接用 `main...` 会漏掉已并入 main 的 PR3。
+> **PR6 大审查基线（重要，防遗忘）**：PR5 会先行合并，故 PR6 冷审查须把 diff 基线**锚到 PR5 合并之前** = **PR4 合并点 `f41c257`**，即 `git diff f41c257...<pr6-head>`，覆盖 PR5+PR6 两批改动。直接用 `main...` 会漏掉已并入 main 的 PR5。
 
 ---
 
@@ -225,20 +225,22 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-06）**：PR4 **TDD 实现已完成**（T1–T4 全绿），在分支 `pr4-storybible` 上、**尚未并入 main**。
-> 该分支含设计 spec + 4 个实现提交（T1 schema / T2 配置 / T3 Curator 核心 / T4 门控冒烟）。
-> **下一步：跑大审查（`/code-review`+`/security-review`，锚 `dd47ed3`）→ 交用户点头 → `pr create` → merge。** 实现已毕，勿重写。
+> **当前状态快照（2026-06-06）**：**PR1–PR4 全部已并入 main**，main 在 **`f41c257`**（Merge PR #6）。
+> PR4 StoryBible Curator 完工：`lib/agent/storyBible.ts`（map-reduce + 确定性 id + provenance + 强校验）、
+> `LocationSchema.aliases`、`loadLLMConfigFromEnv` DeepSeek 回退；大审查（覆盖 PR3+PR4）已过、低危项 defer 记于 §6。
+> 当前 `npm test` = **74 passed | 1 skipped**（门控真冒烟默认 skip），`tsc` 干净。
+> **下一个：PR5 Scene Converter**（单场景 → elements，强制引用 Bible id）。**PR5 不是审查批次**（下次大审查在 PR6，§8.1）。
 
 1. 读本文件（`docs/PROJECT.md`，单一事实来源）+ `docs/DEVLOG.md`（开发纪实，供 demo）。
-2. **接 PR4：`git checkout pr4-storybible`**（**不要 checkout main**——PR4 在这个分支上进行中）。
-   `git log --oneline -3` 应看到顶端是「PR4 plan-eng-review: 评审增量…」`80c17ee` 与「PR4 设计: …spec」。
-   （若要起一个全新 PR 才回 main：`git checkout main && git pull --ff-only`。）
-3. 读 **`docs/superpowers/specs/2026-06-06-pr4-storybible-curator-design.md`**——**§10「评审结论与设计增量」是实现的权威依据**
-   （R1–R6 决策 + I1–I8 增量 + 测试 GAP + 实现任务 T1–T4；§10 覆盖 v1 设计，冲突以 §10 为准）。
-4. **直接进 TDD（superpowers `test-driven-development`），按 §10 的 T1→T4 顺序**：T1 schema（LocationSchema 加 aliases、
-   中间层 zod、强校验）→ T2 配置回退 → T3 Curator 核心 → T4 门控真 LLM 冒烟。**不要重新 brainstorming、不要重新 plan-eng-review**（已做完）。
-5. 完成后：跑齐 §8.1 门禁（`npm test`+`npx tsc --noEmit` 贴原始输出、TDD 先红、更新 DEVLOG）；
-   `pr create` 前跑大审查 `/code-review`+`/security-review`（diff 基线锚 `dd47ed3`，覆盖 PR3+PR4）；更新 §6 进度勾选。
+2. **回 main 起 PR5 分支**：`git checkout main && git pull --ff-only`（应看到顶端 `f41c257` Merge PR #6），
+   再 `git checkout -b pr5-scene-converter`。
+3. **PR5 是创意性 LLM agent，先 brainstorming 设计、再 TDD**（与 PR4 同节奏；架构/规划用 gstack，开发用 superpowers）。
+   复用 PR4 已铺好的地基：`curateStoryBible` 产出的 `StoryBible`（`characters`/`locations` 带稳定 id + `provenance` 侧表）
+   就是 PR5 的跨章共享记忆——场景转换须**强制引用 Bible id**（见 §3 schema 的引用完整性 `checkReferentialIntegrity`）。
+   `provenance[id] → 章号` 可用来按章圈定候选实体，避免把整本 bible 塞进每个场景 prompt。
+4. **§6 待议决策到 PR5 该定了**：① 示例小说是否改简体（同步 chunker 繁體 cue 冒烟）；② 红楼梦取哪几回作 demo。
+5. 跑齐 §8.1 门禁（`npm test`+`npx tsc --noEmit` 贴原始输出、TDD 先红、更新 DEVLOG、用户点头才 merge）。
+   **PR5 不跑大审查**（按 §8.1 节奏锚点表，下次是 PR6，基线锚到 PR4 合并点 `f41c257`）。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
