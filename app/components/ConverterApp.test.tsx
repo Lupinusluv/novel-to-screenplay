@@ -9,6 +9,8 @@ import { toYAML } from "../../lib/schema/yaml";
 type RunArgs = {
   onEvent: (e: PipelineEvent) => void;
   signal?: AbortSignal;
+  /** The novel text this run was invoked with (captured by the test mock). */
+  novel?: string;
 };
 
 function lateScreenplay(title: string): Screenplay {
@@ -37,7 +39,8 @@ function doneScreenplay(): Screenplay {
 function startConversion(novel = "一些小说正文") {
   const calls: RunArgs[] = [];
   const runImpl = vi.fn(
-    (_novel: string, _options: unknown, args: RunArgs) => {
+    (novelArg: string, _options: unknown, args: RunArgs) => {
+      args.novel = novelArg;
       calls.push(args);
       return Promise.resolve();
     },
@@ -110,15 +113,22 @@ describe("ConverterApp", () => {
     expect(screen.getByRole("button", { name: "转换" })).toBeDisabled();
   });
 
-  it("offers 重试 after a fatal error and starts a new run", () => {
-    const calls = startConversion();
+  it("offers 重试 after a fatal error and re-runs the CONVERTED text even if the input box was cleared", () => {
+    const calls = startConversion("原始小说正文");
     fireEvent.click(screen.getByRole("button", { name: "转换" }));
     act(() => {
       calls[0].onEvent({ type: "error", stage: "storybible", message: "boom" });
     });
     expect(screen.getByText(/转换失败/)).toBeInTheDocument();
+    // user clears the input box after the failure
+    fireEvent.change(screen.getByPlaceholderText(/粘贴小说/), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    // retry must still fire, and re-run the text that actually failed (snapshot),
+    // not the now-empty input box (which would silently no-op).
     expect(calls).toHaveLength(2);
+    expect(calls[1].novel).toBe("原始小说正文");
   });
 
   it("applies a YAML edit and reflects the new title in the header", () => {

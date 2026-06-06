@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Scene, Screenplay } from "../../lib/schema/screenplay";
 import type { SceneWarning } from "../../lib/client/pipelineState";
 import { SceneCard } from "./SceneCard";
@@ -56,8 +56,13 @@ export function ScreenplayView({
         : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
     }`;
 
-  const warningFor = (sceneId: string) =>
-    warnings.find((w) => w.sceneId === sceneId)?.message;
+  // Build a sceneId → message map once per warnings change instead of a linear
+  // scan per scene card (O(scenes × warnings) → O(scenes)).
+  const warningById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of warnings) if (w.sceneId) m.set(w.sceneId, w.message);
+    return m;
+  }, [warnings]);
 
   return (
     <section className="flex flex-col gap-4">
@@ -115,7 +120,7 @@ export function ScreenplayView({
                 key={scene.id}
                 scene={scene}
                 novel={novel}
-                reviewMessage={warningFor(scene.id)}
+                reviewMessage={warningById.get(scene.id)}
               />
             ))
           )}

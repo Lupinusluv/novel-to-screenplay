@@ -281,3 +281,18 @@
 
 **门禁证据**：`npx tsc --noEmit` 干净（exit 0）；`npm run lint` 干净（0 warning——E19「场景被替换关弹层」原用 `useEffect`+`setState` 被 `react-hooks/set-state-in-effect` 拦下，改为「弹层 open-state keyed by 场景身份」的派生渲染，更优且无副作用）；`npm test` = **252 passed | 3 skipped**（+43 新测，既有 209 不回归）。
 - **真浏览器实跑（demo 闭环硬约束，2026-06-07 playwright MCP 实跑过）**：Chrome dev server 选内置示例（红楼前三回，4402 字）→ 转换（真 DeepSeek，busy 禁用「转换」+「取消」就位 + 流式骨架 → 时间线 4 阶段点亮 + 9/9 + 9 张卡片，done 后「转换」复位）→ 点首卡「溯源」→ 弹层显示「第 1 章 · 溯源」+ excerpt + **原文 `<mark>` 高亮真实红楼原文**「此開卷第一回也．作者自云…」→ Esc 关闭**且焦点还给溯源按钮**（a11y）→ 切 YAML 改 title 为「红楼梦剧本【已编辑】」点「应用」→ **header/卡片同步刷新**、无错 → 再改成非法（空 title）点「应用」→ **内联「校验错误：title: Too small…」且 header 保持上一份好状态**（onApply 未触发）→「重置」回灌到 display YAML、错误清除 → **导出 blob 实测含编辑后 title**。控制台唯一 error 是实跑时为抓 blob 注入的假 URL（测试探针，非应用 bug）。闭环全通。
+
+### PR8 大审查（`/code-review`，冷读 `git diff 69ff533...HEAD` 覆盖 PR7+PR8，2026-06-07）
+
+高 recall 模式：4 个独立 finder agent（逐行 / 删行回归 / 安全·a11y / cleanup·性能）冷读 → 去重 verify。**安全面干净**：无 `dangerouslySetInnerHTML`/innerHTML（高亮纯 React 文本节点，XSS 测试断言过）；原型污染被 zod `strictObject` 挡；billion-laughs 被 yaml 默认 `maxAliasCount=100` 挡；`MAX_YAML_CHARS` 护栏在 `parse` 之前；E10 边界不破（`lib/client`→`lib/agent` 仅 type-only，`applyEdit` 仅运行时依赖 pure 的 `lib/schema`）。修了 6 条：
+
+1. **【中·真 bug】「重试」用错文本**：原 `重试` 调 `startConversion`（读实时输入框），失败后清空输入框 → 守卫 `text.trim()===0` 静默 no-op；且即便不清空也是重试「当前框」而非「失败的那份」。改：抽 `runFor(text)`，`startConversion`=`runFor(novel)`、`retryConversion`=`runFor(sourceNovel)`（重试失败快照）。加测试：失败后清空输入框，重试仍发起且跑的是原文快照。
+2. **【中·性能】溯源整本重扫未 memo**：`locateExcerpt` 回退路径对整本（≤200k）跑 `normalizeWithMap`，且在 `SourceModal` render body 每次重算。改：`useMemo([novel, excerpt])`。
+3. **【中·a11y】Esc `stopPropagation` + 多弹层**：document 级 Esc 监听 `stopPropagation` 会吞掉其它全局 Esc 处理器。改：去掉 `stopPropagation`（只 `onClose`）。
+4. **【中·脆性】YamlView draft 不随 yaml prop 带外变更重 seed**：原只挂载时 seed 一次，靠 run 间 unmount 兜底。改：render 期「yaml 变了就重 seed draft + 清 error」（React 认可的 render 期调状态，**不**碰 warnings——自身 `应用` 也会改 yaml 但需保留刚设的引用警告）。加测试：mounted 状态下换 yaml prop → 编辑器重 seed。
+5. **【低·性能】`displayYaml=toYAML(edited)` 每 render 重算**：改 `useMemo([edited, state.yaml])`。
+6. **【低·性能】`warningFor` 每场景线性 find**：改 `useMemo` 建 `Map<sceneId,message>`，查 O(1)。
+
+**记为已知/取舍保留**（recall 模式列出但不修）：locateExcerpt step-3 末尾并入尾随空白（已文档化「仅位置偏、数据不错」）；`excerptOf` 在 120 cap 处理论上劈代理对（PR5 旧码、极罕见）；needle 那趟 `normalizeWithMap` 建小 map 丢弃（excerpt ≤120 字，开销可忽略）；chunker 与 locateExcerpt 各自的空白折叠概念重复（E10 边界禁共享，定义有意不同）。
+
+修完门禁：`npm test` = **253 passed | 3 skipped**（+1 resync 测）｜`tsc` exit 0｜`lint` 0 warning。

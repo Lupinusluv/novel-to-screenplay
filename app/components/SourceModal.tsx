@@ -18,7 +18,7 @@
 
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import type { Scene } from "../../lib/schema/screenplay";
 import { locateExcerpt } from "../../lib/client/locateExcerpt";
 
@@ -37,15 +37,20 @@ export function SourceModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const markRef = useRef<HTMLElement>(null);
 
-  const match = locateExcerpt(novel, scene.source.excerpt);
+  // Locating walks the whole novel on the fallback path; memoize so it doesn't
+  // re-scan a large novel on every re-render (focus/scroll effects re-render).
+  const match = useMemo(
+    () => locateExcerpt(novel, scene.source.excerpt),
+    [novel, scene.source.excerpt],
+  );
 
-  // Esc to close (E8). Listen on document so it fires regardless of focus.
+  // Esc to close (E8). Listen on document so it fires regardless of focus. We do
+  // NOT stopPropagation: the modal isn't the only possible Esc consumer, and
+  // swallowing the event on a shared document listener would suppress other
+  // (e.g. future global) Escape handlers.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
+      if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

@@ -36,6 +36,20 @@ export function YamlView({
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
+  // Re-seed the draft when the canonical `yaml` changes out of band (a new run,
+  // or a parent-driven re-derivation) WITHOUT relying on this instance being
+  // unmounted between runs. Adjusting state during render (React's sanctioned
+  // pattern) instead of an effect. We deliberately do NOT clear `warnings` here:
+  // our own 应用 also bumps `yaml` (to toYAML(applied)) and must keep its
+  // freshly-set reference warnings. An external change clearing the stale error
+  // is fine.
+  const [seededYaml, setSeededYaml] = useState(yaml);
+  if (yaml !== seededYaml) {
+    setSeededYaml(yaml);
+    setDraft(yaml);
+    setError(null);
+  }
+
   if (!canEdit) {
     return (
       <pre className="overflow-auto rounded-lg border border-zinc-200 bg-zinc-50 p-4 font-mono text-xs leading-6 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">

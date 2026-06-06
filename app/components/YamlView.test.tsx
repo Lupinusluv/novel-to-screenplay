@@ -67,6 +67,21 @@ describe("YamlView — editable (canEdit=true)", () => {
     expect(screen.getAllByText(/引用|警告/).length).toBeGreaterThan(0);
   });
 
+  it("re-seeds the editor when the yaml prop changes out of band (new canonical version)", () => {
+    const { rerender } = render(
+      <YamlView yaml={baseYaml} canEdit onApply={() => {}} />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "乱改的草稿" } });
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "乱改的草稿",
+    );
+    // parent pushes a different canonical yaml (e.g. a new run finished) while
+    // this instance stays mounted — the editor must re-seed, not keep the draft.
+    const other = toYAML(validScreenplay({ logline: "另一条故事线" }));
+    rerender(<YamlView yaml={other} canEdit onApply={() => {}} />);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(other);
+  });
+
   it("restores the draft to the current yaml on 重置", () => {
     render(<YamlView yaml={baseYaml} canEdit onApply={() => {}} />);
     const ta = screen.getByRole("textbox") as HTMLTextAreaElement;

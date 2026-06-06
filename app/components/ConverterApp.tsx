@@ -20,7 +20,7 @@
 
 "use client";
 
-import { useReducer, useRef, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import {
   initialPipelineState,
   pipelineReducer,
@@ -66,8 +66,12 @@ export function ConverterApp({
   const runIdRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
 
-  function startConversion() {
-    if (novel.trim().length === 0) return;
+  // The single run entry point. `startConversion` runs the input box; `retry`
+  // re-runs the snapshot that actually failed — NOT the live box, which the user
+  // may have cleared/edited after the failure (that would silently no-op or
+  // convert different text).
+  function runFor(text: string) {
+    if (text.trim().length === 0) return;
 
     // Invalidate + abort any in-flight run (E4).
     controllerRef.current?.abort();
@@ -76,11 +80,11 @@ export function ConverterApp({
     controllerRef.current = controller;
 
     setEdited(undefined); // a new run invalidates any prior edit (E16)
-    setSourceNovel(novel); // freeze the source for traceability (E2)
+    setSourceNovel(text); // freeze the source for traceability (E2)
     dispatch({ kind: "reset" });
     setInFlight(true);
 
-    void runConversionImpl(novel, undefined, {
+    void runConversionImpl(text, undefined, {
       signal: controller.signal,
       onEvent: (event) => {
         if (runIdRef.current !== myRunId) return; // late event from an old run
@@ -90,11 +94,22 @@ export function ConverterApp({
     });
   }
 
+  // Param-less so it stays safe wired straight to a button onClick (the event
+  // arg is ignored); always converts the current input box.
+  function startConversion() {
+    runFor(novel);
+  }
+
+  function retryConversion() {
+    runFor(sourceNovel);
+  }
+
   function cancelConversion() {
     controllerRef.current?.abort();
     controllerRef.current = null;
     runIdRef.current += 1; // invalidate the current run's callbacks
     setEdited(undefined);
+    setSourceNovel("");
     dispatch({ kind: "reset" });
     setInFlight(false);
   }
@@ -104,7 +119,13 @@ export function ConverterApp({
   // Edit overlay merged with the streamed state — drives every view + export.
   const displayScreenplay = edited ?? state.screenplay;
   const displayScenes = edited ? edited.scenes : state.scenes;
-  const displayYaml = edited ? toYAML(edited) : state.yaml;
+  // Memoize the edit-branch serialization so it isn't recomputed on every
+  // unrelated re-render (keystrokes, inFlight toggles); the stream branch is
+  // already memoized inside the reducer.
+  const displayYaml = useMemo(
+    () => (edited ? toYAML(edited) : state.yaml),
+    [edited, state.yaml],
+  );
   const canEdit = state.status === "done";
   const sceneStage = state.stages.scenes;
 
@@ -133,7 +154,7 @@ export function ConverterApp({
           </span>
           <button
             type="button"
-            onClick={startConversion}
+            onClick={retryConversion}
             className="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/40"
           >
             重试
