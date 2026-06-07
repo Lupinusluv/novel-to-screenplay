@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SceneCard } from "./SceneCard";
 import type { Scene } from "../../lib/schema/screenplay";
 
@@ -37,5 +37,50 @@ describe("SceneCard", () => {
 
     rerender(<SceneCard scene={makeScene({ needs_review: false })} />);
     expect(screen.queryByText("需复核")).not.toBeInTheDocument();
+  });
+
+  it("opens the source modal when the 溯源 button is clicked", () => {
+    render(<SceneCard scene={makeScene()} novel="前面原文片段后面" />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /溯源/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    // excerpt is shown verbatim inside the modal
+    expect(screen.getAllByText("原文片段").length).toBeGreaterThan(0);
+  });
+
+  it("resolves location/character ids to Chinese names and translates the slug enums", () => {
+    render(
+      <SceneCard
+        scene={makeScene()}
+        locations={new Map([["loc_rongguo", "荣国府"]])}
+        characters={new Map([["char_daiyu", "林黛玉"]])}
+      />,
+    );
+    // slug shows the location NAME + Chinese int/ext + time, not the raw id
+    // (regex pins the slug line specifically; the synopsis also says 荣国府)
+    expect(screen.getByText(/内景.*荣国府.*日/)).toBeInTheDocument();
+    expect(screen.queryByText(/loc_rongguo/)).not.toBeInTheDocument();
+    // dialogue speaker shows the character NAME, not char_daiyu
+    expect(screen.getByText("林黛玉")).toBeInTheDocument();
+    expect(screen.queryByText("char_daiyu")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the raw id when no name is known (e.g. streaming)", () => {
+    render(<SceneCard scene={makeScene()} />);
+    expect(screen.getByText(/loc_rongguo/)).toBeInTheDocument();
+    expect(screen.getByText("char_daiyu")).toBeInTheDocument();
+  });
+
+  it("expands the needs-review badge to reveal its reason message", () => {
+    render(
+      <SceneCard
+        scene={makeScene({ needs_review: true })}
+        reviewMessage="引用未解析：char_unknown"
+      />,
+    );
+    expect(screen.queryByText("引用未解析：char_unknown")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("需复核"));
+    expect(screen.getByText("引用未解析：char_unknown")).toBeInTheDocument();
   });
 });

@@ -43,8 +43,14 @@ export function AgentTimeline({ state }: { state: PipelineState }) {
     <ol className="space-y-3">
       {STAGE_META.map(({ stage, role, agent }) => {
         const view = state.stages[stage];
+        // Only show the running progress bar while the scenes stage is actually
+        // working; once it is done (or errored) the bar collapses so a completed
+        // run never looks stuck on a lingering "N / N".
         const showProgress =
-          stage === "scenes" && view.total != null && view.total > 0;
+          stage === "scenes" &&
+          view.status === "active" &&
+          view.total != null &&
+          view.total > 0;
         return (
           <li
             key={stage}

@@ -9,11 +9,18 @@
  * controller and bumps the id; the `onEvent` callback drops any event whose
  * captured id is no longer current, so a late frame from an aborted stream can
  * never pollute the new run's state.
+ *
+ * PR8 adds an `edited` overlay (YAML round-trip editing) and a `sourceNovel`
+ * snapshot (traceability). The overlay lives OUTSIDE the reducer so the SSE
+ * stream stays a pure, replayable projection; the App merges the two into
+ * `display*` values that drive every view + export. The snapshot freezes the
+ * novel as it was at conversion time, so 溯源 keeps locating even after the user
+ * edits the input box for a fresh run. Both reset on start / cancel / retry.
  */
 
 "use client";
 
-import { useReducer, useRef, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import {
   initialPipelineState,
   pipelineReducer,
@@ -21,6 +28,8 @@ import {
 } from "../../lib/client/pipelineState";
 import { runConversion } from "../../lib/client/sseClient";
 import type { PipelineEvent } from "../../lib/agent/events";
+import type { Screenplay } from "../../lib/schema/screenplay";
+import { toYAML } from "../../lib/schema/yaml";
 import { InputPanel } from "./InputPanel";
 import { AgentTimeline } from "./AgentTimeline";
 import { ScreenplayView } from "./ScreenplayView";
@@ -50,12 +59,19 @@ export function ConverterApp({
   const [novel, setNovel] = useState("");
   const [state, dispatch] = useReducer(appReducer, undefined, initialPipelineState);
   const [inFlight, setInFlight] = useState(false);
+  // PR8: user edit overlay + conversion-time novel snapshot.
+  const [edited, setEdited] = useState<Screenplay | undefined>(undefined);
+  const [sourceNovel, setSourceNovel] = useState("");
 
   const runIdRef = useRef(0);
   const controllerRef = useRef<AbortController | null>(null);
 
-  function startConversion() {
-    if (novel.trim().length === 0) return;
+  // The single run entry point. `startConversion` runs the input box; `retry`
+  // re-runs the snapshot that actually failed — NOT the live box, which the user
+  // may have cleared/edited after the failure (that would silently no-op or
+  // convert different text).
+  function runFor(text: string) {
+    if (text.trim().length === 0) return;
 
     // Invalidate + abort any in-flight run (E4).
     controllerRef.current?.abort();
@@ -63,10 +79,12 @@ export function ConverterApp({
     const controller = new AbortController();
     controllerRef.current = controller;
 
+    setEdited(undefined); // a new run invalidates any prior edit (E16)
+    setSourceNovel(text); // freeze the source for traceability (E2)
     dispatch({ kind: "reset" });
     setInFlight(true);
 
-    void runConversionImpl(novel, undefined, {
+    void runConversionImpl(text, undefined, {
       signal: controller.signal,
       onEvent: (event) => {
         if (runIdRef.current !== myRunId) return; // late event from an old run
@@ -76,15 +94,40 @@ export function ConverterApp({
     });
   }
 
+  // Param-less so it stays safe wired straight to a button onClick (the event
+  // arg is ignored); always converts the current input box.
+  function startConversion() {
+    runFor(novel);
+  }
+
+  function retryConversion() {
+    runFor(sourceNovel);
+  }
+
   function cancelConversion() {
     controllerRef.current?.abort();
     controllerRef.current = null;
     runIdRef.current += 1; // invalidate the current run's callbacks
+    setEdited(undefined);
+    setSourceNovel("");
     dispatch({ kind: "reset" });
     setInFlight(false);
   }
 
   const showResults = inFlight || state.status !== "idle";
+
+  // Edit overlay merged with the streamed state — drives every view + export.
+  const displayScreenplay = edited ?? state.screenplay;
+  const displayScenes = edited ? edited.scenes : state.scenes;
+  // Memoize the edit-branch serialization so it isn't recomputed on every
+  // unrelated re-render (keystrokes, inFlight toggles); the stream branch is
+  // already memoized inside the reducer.
+  const displayYaml = useMemo(
+    () => (edited ? toYAML(edited) : state.yaml),
+    [edited, state.yaml],
+  );
+  const canEdit = state.status === "done";
+  const sceneStage = state.stages.scenes;
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
@@ -101,11 +144,21 @@ export function ConverterApp({
         value={novel}
         onChange={setNovel}
         onConvert={startConversion}
+        busy={inFlight}
       />
 
       {state.error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          转换失败：{state.error.message}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+          <span>
+            转换失败（{state.error.stage}）：{state.error.message}
+          </span>
+          <button
+            type="button"
+            onClick={retryConversion}
+            className="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/40"
+          >
+            重试
+          </button>
         </div>
       )}
 
@@ -130,16 +183,37 @@ export function ConverterApp({
           </div>
 
           <ScreenplayView
-            scenes={state.scenes}
-            screenplay={state.screenplay}
-            yaml={state.yaml}
+            scenes={displayScenes}
+            screenplay={displayScreenplay}
+            yaml={displayYaml}
+            novel={sourceNovel}
+            warnings={state.warnings}
+            warningsStale={!!edited}
+            canEdit={canEdit}
+            onApply={setEdited}
+            streaming={inFlight}
+            sceneProgress={{ done: sceneStage.done, total: sceneStage.total }}
           />
         </div>
       ) : (
-        <p className="text-center text-sm text-zinc-400">
-          粘贴或载入小说后点「转换」，即可看到 agent 流水线实时工作。
-        </p>
+        <EmptyGuidance />
       )}
+    </div>
+  );
+}
+
+function EmptyGuidance() {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-zinc-300 px-6 py-12 text-center dark:border-zinc-700">
+      <span className="text-3xl" aria-hidden>
+        📝
+      </span>
+      <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
+        粘贴小说正文、上传 .txt，或载入内置示例
+      </p>
+      <p className="text-xs text-zinc-400">
+        点上方「转换」即可看到 agent 流水线实时拆解为可编辑、可溯源的剧本。
+      </p>
     </div>
   );
 }
