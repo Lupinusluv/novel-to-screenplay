@@ -49,6 +49,16 @@ const CHAPTER_HEADING = new RegExp(
   "i",
 );
 
+/**
+ * ReDoS guard (PR11 big-review). `CHAPTER_HEADING`'s lazy `TITLE` class overlaps
+ * the trailing `[ \t　]*$`, so a crafted single line (marker + a non-space char +
+ * a huge whitespace run + a non-space char) backtracks quadratically — on a
+ * `MAX_NOVEL_CHARS`-sized line that blocks the event loop for seconds. A real
+ * heading is always a short line, so we never even run the regex on a long one;
+ * the over-length line falls through to the body and is split as normal prose.
+ */
+const MAX_HEADING_LINE = 200;
+
 export interface SceneCandidate {
   /** 0-based index within the chapter (post-merge, post-reindex). */
   index: number;
@@ -93,6 +103,7 @@ export function chunkNovel(raw: string): ChunkResult {
   // Locate every chapter heading line.
   const headings: { line: number; marker: string; title: string }[] = [];
   lines.forEach((line, i) => {
+    if (line.length > MAX_HEADING_LINE) return; // ReDoS guard: never a heading
     const m = line.match(CHAPTER_HEADING);
     if (m) {
       headings.push({
