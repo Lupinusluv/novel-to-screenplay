@@ -340,3 +340,23 @@
 **demo 可讲一句**：真实脏文件逼出的不是切分 bug 而是下游 Critic 的健壮性盲点——确定性 chunker 一变强，就把 LLM agent 的脆弱处顶到了台面上；防御性边界（一个 agent 失败不拖垮整条流水线）才是 agentic 系统能上真实输入的关键。
 
 门禁（含本修复）：`npm test` = **275 passed | 3 skipped**（+1）｜`tsc` exit 0｜`lint` 0 warning。
+
+## PR10 · 前端打磨 MVP：视觉升级 + 多 .txt 上传 + 多体裁示例集（2026-06-07）✅
+
+**背景**：临近 demo 录制，用户拍板把 PR10 收成 MVP——**只做** ① 视觉去「简陋感」 ② 多 `.txt` 上传 ③ 示例集框架 + 三大体裁真跑通；YAML 块间空行可读性、其余体裁（意识流/鲁迅/武侠等）**defer**。设计阶段本要走 gstack `/gstack-spec`，但用户时间压力下中途叫停形式化 spec（用户指令优先），转 superpowers TDD 直接实现。
+
+**改了什么**：
+1. **多体裁示例集框架**：`lib/samples/manifest.ts` 单一事实来源（id/genre/title/blurb + 服务端 file 名）。`app/api/sample/route.ts` 从「读死红楼」升级为 `GET /api/sample`（返回 manifest JSON）+ `GET /api/sample?id=<id>`（返回正文）。**安全**：client 只回传 `id`，经 `sampleFileById` 精确查表解析 → 用户输入永不拼进文件路径，无路径穿越面（`?id=../../etc/passwd` → 404，测试钉死）。manifest 只暴露元数据、不漏 `file` 字段。
+2. **三个示例语料**：红楼前三回（沿用，公有领域）+ **原创**网文体《回响纪元》（系统提示/心理活动/世界观）+ **原创**散文《老站台》（无冲突、考验场景提取）。**为何原创**：逐字复现《诡秘之主》《背影》等已出版作品既撞内容过滤、又有版权与「凭记忆复现出错」三重风险；自写同体裁样本最诚实可复现，往 `samples/` 丢文件 + manifest 加一行即可换真节选。
+3. **多 `.txt` 上传**：`lib/client/concatFiles.ts`（纯函数，node 单测）——`Intl.Collator({numeric:true})` 自然序（`第2章` < `第10章`，非字典序）+ 去边缘空白 + 单空行拼接 + 丢空文件。`InputPanel` file input 加 `multiple`，FileReader 读全部。
+4. **视觉升级**：渐变标题 + 徽章 pill；示例卡片墙（genre chip + title + blurb，hover 升起）；indigo 主色贯穿（时间线 active 点/进度条/对白角色名左边框）；输入区 rounded-xl + focus ring；卡片 hover 阴影；空态/转换中态文案与按钮态打磨。
+
+**踩坑**：①散文《老站台》初版单空行分段 + 裸「一/二/三」节标，chunker 整篇并成 1 候选（< 1500 软目标且节标非分隔符）→ demo「提取多个场景」落空。**根因**：`splitScenes` 的硬边界是「≥2 连续空行 / 分隔行」。改用**双空行**隔开三段（站台/老屋/菜市场）→ 干净切成 3 候选，散文最自然、无需灌长度。②`InputPanel` 转换按钮 busy 时改文案「转换中…」，撞了 `ConverterApp.test` 按名查「转换」的断言——按新标签更新测试，保留「禁止重复提交」语义。
+
+**真浏览器端到端验证**（playwright + 真 DeepSeek）：首页截图确认视觉到位（渐变标题/三卡/indigo）；**现代网文**实跑 ✅（4 阶段全亮、标题「醒来的人」、多场景卡、对白格式、导出就位）；**散文老站台**实跑 ✅（3 场景=站台/老屋/菜市场、导出就位）。古典章回沿用 PR7/9 已验证。三大体裁**真正跑通**坐实，示例卡 blurb 不虚标。
+
+**demo 可讲一句**：同一条 agent 流水线，喂古典章回、现代网文、无冲突散文都能拆出结构化场景——示例选择器让评委一键切体裁，亲眼看到「吃多种小说」不是 PPT 话术。
+
+门禁：`npm test` = **285 passed | 3 skipped**（+10：concat 5 / sample route +3 / InputPanel +2；既有 275 零回归）｜`tsc --noEmit` exit 0。新测均先红后绿。
+
+**待办（defer，不在 MVP）**：YAML 块间空行可读性；意识流/鲁迅短篇/武侠等其余体裁语料；**PR10 大审查节点**（`/code-review`+`/security-review` 冷读 `1162e8d...<pr10-head>` 覆盖 PR9+PR10，含 chunker/示例 route 解析未信任输入）——是否在 demo 前跑由用户定。

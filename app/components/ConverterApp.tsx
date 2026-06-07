@@ -132,11 +132,14 @@ export function ConverterApp({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
       <header className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-300">
+          <span aria-hidden>🎬</span> 多 agent 流水线 · 可编辑 · 可溯源
+        </span>
+        <h1 className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-500 bg-clip-text text-4xl font-bold tracking-tight text-transparent">
           AI 小说转剧本
         </h1>
-        <p className="mt-2 text-zinc-500 dark:text-zinc-400">
-          粘贴小说 → agent 流水线实时拆解 → 结构化可导出剧本
+        <p className="mx-auto mt-3 max-w-xl text-zinc-500 dark:text-zinc-400">
+          粘贴小说 → agent 流水线实时拆解 → 结构化、可编辑、可溯源的影视剧本
         </p>
       </header>
 
@@ -204,15 +207,15 @@ export function ConverterApp({
 
 function EmptyGuidance() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-zinc-300 px-6 py-12 text-center dark:border-zinc-700">
-      <span className="text-3xl" aria-hidden>
+    <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-zinc-300 bg-white/50 px-6 py-14 text-center dark:border-zinc-700 dark:bg-zinc-900/30">
+      <span className="text-4xl" aria-hidden>
         📝
       </span>
       <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-        粘贴小说正文、上传 .txt，或载入内置示例
+        选一个上面的体裁示例、上传 .txt（可多选），或直接粘贴正文
       </p>
-      <p className="text-xs text-zinc-400">
-        点上方「转换」即可看到 agent 流水线实时拆解为可编辑、可溯源的剧本。
+      <p className="max-w-md text-xs leading-5 text-zinc-400">
+        点「转换」即可看到 agent 流水线实时拆解为可编辑、可溯源的剧本。
       </p>
     </div>
   );

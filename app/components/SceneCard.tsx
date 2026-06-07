@@ -69,8 +69,8 @@ function ElementRow({
   }
   if (element.type === "dialogue") {
     return (
-      <div className="pl-4">
-        <p className="text-xs font-semibold tracking-wide text-zinc-600 dark:text-zinc-300">
+      <div className="border-l-2 border-indigo-100 pl-4 dark:border-indigo-900/50">
+        <p className="text-xs font-semibold tracking-wide text-indigo-700 dark:text-indigo-300">
           {nameOf(characters, element.character_id)}
         </p>
         {element.parenthetical && (
@@ -116,7 +116,7 @@ export function SceneCard({
   const showSource = openKey === sceneKey;
 
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <article className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900">
       <header className="mb-2 flex items-start justify-between gap-2">
         <div>
           <SlugLine scene={scene} locations={locations} />
