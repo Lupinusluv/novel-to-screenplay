@@ -3,14 +3,47 @@ import {
   naturalCompare,
   orderFilesNaturally,
   concatNovelFiles,
+  parseOrdinal,
+  chapterOrdinal,
   type NamedText,
 } from "./concatFiles";
 
+describe("parseOrdinal", () => {
+  it("parses Arabic and Chinese numerals", () => {
+    expect(parseOrdinal("36")).toBe(36);
+    expect(parseOrdinal("三十六")).toBe(36);
+    expect(parseOrdinal("十")).toBe(10);
+    expect(parseOrdinal("一百二十")).toBe(120);
+    expect(parseOrdinal("两")).toBe(2);
+    expect(parseOrdinal("第七")).toBeNull(); // contains non-numeral 第
+  });
+});
+
+describe("chapterOrdinal", () => {
+  it("extracts the chapter number from a real filename", () => {
+    expect(
+      chapterOrdinal("《红楼梦》第三十六回 绣鸳鸯梦兆绛芸轩.txt"),
+    ).toBe(36);
+    expect(chapterOrdinal("第10章.txt")).toBe(10);
+    expect(chapterOrdinal("追忆似水年华.txt")).toBeNull();
+  });
+});
+
 describe("naturalCompare", () => {
-  it("orders embedded numbers by value, not lexicographically", () => {
+  it("orders embedded Arabic numbers by value, not lexicographically", () => {
     expect(naturalCompare("第2章.txt", "第10章.txt")).toBeLessThan(0);
     expect(naturalCompare("第10章.txt", "第2章.txt")).toBeGreaterThan(0);
     expect(naturalCompare("part1", "part1")).toBe(0);
+  });
+
+  it("orders Chinese-numeral chapters by value (the multi-select bug)", () => {
+    const names = [
+      "《红楼梦》第三十八回 林潇湘魁夺菊花诗.txt",
+      "《红楼梦》第三十六回 绣鸳鸯梦兆绛芸轩.txt",
+      "《红楼梦》第三十七回 秋爽斋偶结海棠社.txt",
+    ];
+    const sorted = [...names].sort(naturalCompare);
+    expect(sorted.map((n) => chapterOrdinal(n))).toEqual([36, 37, 38]);
   });
 });
 
