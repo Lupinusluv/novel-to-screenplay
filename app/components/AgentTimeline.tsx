@@ -26,14 +26,14 @@ const STATUS_LABEL: Record<StageStatus, string> = {
 
 const DOT_CLASS: Record<StageStatus, string> = {
   pending: "bg-zinc-300 dark:bg-zinc-700",
-  active: "animate-pulse bg-blue-500",
+  active: "animate-pulse bg-indigo-500 ring-4 ring-indigo-500/20",
   done: "bg-emerald-500",
   error: "bg-red-500",
 };
 
 const STATUS_TEXT_CLASS: Record<StageStatus, string> = {
   pending: "text-zinc-400",
-  active: "text-blue-600 dark:text-blue-400",
+  active: "text-indigo-600 dark:text-indigo-400",
   done: "text-emerald-600 dark:text-emerald-400",
   error: "text-red-600 dark:text-red-400",
 };
@@ -54,7 +54,11 @@ export function AgentTimeline({ state }: { state: PipelineState }) {
         return (
           <li
             key={stage}
-            className="flex gap-3 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+            className={`flex gap-3 rounded-xl border bg-white p-3 transition-colors dark:bg-zinc-900 ${
+              view.status === "active"
+                ? "border-indigo-300 dark:border-indigo-800"
+                : "border-zinc-200 dark:border-zinc-800"
+            }`}
           >
             <span
               aria-hidden
@@ -82,7 +86,7 @@ export function AgentTimeline({ state }: { state: PipelineState }) {
                   </div>
                   <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
                     <div
-                      className="h-full rounded-full bg-blue-500 transition-all"
+                      className="h-full rounded-full bg-indigo-500 transition-all"
                       style={{
                         width: `${Math.round(
                           ((view.done ?? 0) / (view.total || 1)) * 100,

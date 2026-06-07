@@ -110,7 +110,9 @@ describe("ConverterApp", () => {
     const convert = screen.getByRole("button", { name: "转换" });
     expect(convert).not.toBeDisabled();
     fireEvent.click(convert);
-    expect(screen.getByRole("button", { name: "转换" })).toBeDisabled();
+    // while in flight the button relabels to 转换中… and is disabled (no dup submit)
+    expect(screen.getByRole("button", { name: "转换中…" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "转换" })).not.toBeInTheDocument();
   });
 
   it("offers 重试 after a fatal error and re-runs the CONVERTED text even if the input box was cleared", () => {
