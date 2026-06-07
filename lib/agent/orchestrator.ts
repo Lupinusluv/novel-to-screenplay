@@ -26,7 +26,7 @@ import {
   type ConversionIssue,
   type SceneRevision,
 } from "./sceneConverter";
-import { critiqueScene } from "./critic";
+import { critiqueScene, type CritiqueResult } from "./critic";
 import { toYAML } from "../schema/yaml";
 import { eventToSSE } from "./sse";
 import type { Scene, Screenplay } from "../schema/screenplay";
@@ -136,6 +136,17 @@ function placeholderScene(
   };
 }
 
+/** PR9: if the chunker flagged this candidate as a non-adjacent near-duplicate
+ *  of an earlier one (multi-version paste), mark the scene needs_review with a
+ *  human note. Never deletes — a recurring passage may be legitimate; the call
+ *  leaves the judgment to a person. */
+function flagNearDuplicate(scene: Scene, candidate: SceneCandidate): Scene {
+  if (candidate.nearDuplicateOf === undefined) return scene;
+  if (scene.synopsis.includes("疑似与本章")) return scene; // idempotent
+  const note = `（疑似与本章第 ${candidate.nearDuplicateOf + 1} 个场景重复，或为多版本粘贴所致，请人工确认）`;
+  return { ...scene, needs_review: true, synopsis: scene.synopsis + note };
+}
+
 type TryResult =
   | { ok: true; scene: Scene; issues: ConversionIssue[] }
   | { ok: false; error: string };
@@ -243,17 +254,26 @@ async function processCandidate(
       sceneId: scene.id,
       message: det.errorMsg ?? "scene conversion failed",
     });
-    return scene; // placeholder; skip the Critic
+    return flagNearDuplicate(scene, item.candidate); // placeholder; skip the Critic
   }
 
   const criticOn = opts.critic ?? true;
   const scope = opts.criticScope ?? "all";
   const inScope = scope === "all" || scene.needs_review === true;
-  if (!criticOn || !inScope) return scene;
+  if (!criticOn || !inScope) return flagNearDuplicate(scene, item.candidate);
 
   const seen = new Set([sceneHash(scene)]);
   let ctries = 0;
-  let crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+  // The Critic is best-effort and throws on malformed model output by design
+  // (critic.ts). That throw must NOT abort the run: keep the converted scene,
+  // flag it for review, and move on (dogfood fix: 人生何处不青山.txt crashed a
+  // 9-scene run when one critique came back missing `suggestion`).
+  let crit: CritiqueResult;
+  try {
+    crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+  } catch {
+    return flagNearDuplicate({ ...scene, needs_review: true }, item.candidate);
+  }
   while (!crit.ok && ctries < budget) {
     const seed: SceneRevision = {
       critique: crit.issues.filter((i) => i.severity === "major").map((i) => i.suggestion),
@@ -267,11 +287,15 @@ async function processCandidate(
     if (seen.has(h)) break; // E5 oscillation → keep current best
     seen.add(h);
     scene = re.scene;
-    crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+    try {
+      crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+    } catch {
+      return flagNearDuplicate({ ...scene, needs_review: true }, item.candidate);
+    }
     ctries++;
   }
   if (!crit.ok) scene = { ...scene, needs_review: true };
-  return scene;
+  return flagNearDuplicate(scene, item.candidate);
 }
 
 /** Bounded-concurrency pool; preserves index→slot mapping (E5b). */

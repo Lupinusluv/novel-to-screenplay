@@ -307,3 +307,36 @@
 > 已知/排后续：#4 现代散文无章回体切分线索 → 整篇成 1 个超大场景候选超 `SCENE_BODY_CAP=4000` → 诚实截断 + needs_review（设计如此，非 bug）；正解是后端 chunker 增「按空行/长度切场景」+ 调上限，属 C 档单独后端 PR。
 
 门禁：`npm test` = **256 passed | 3 skipped**（+3 测）｜`tsc` exit 0｜`lint` 0 warning。
+
+## PR9 · 切分鲁棒性（后端 chunker，纯 `lib/agent`）✅（2026-06-07）
+
+**起因**：用户实跑（真 DeepSeek + 真红楼）三处失守 → 这次根治。设计走 gstack `/gstack-spec`（轻量档：spec + **一次 codex 冷读** 复审，**不跑** `/code-review`+`/security-review` 大审查——用户拍板并入下次前端 PR）。实现走 superpowers TDD，5 个 red→green 循环。spec 见 `docs/superpowers/specs/2026-06-07-pr9-chunker-robustness-design.md`。
+
+**改了什么**（`lib/agent/chunker.ts` + 3 行 `orchestrator.ts`）：
+1. **回目识别鲁棒化**：`CHAPTER_HEADING` 由「行首 `^第N回`」重写成「可选 `《》`/`【】` 前缀 + 主标记 + 可选标题」，分件拼装可读。主标记支持 `第N卷/章/回/节/部/篇`、组合 `第N卷·第N章`（两级都留）、英译 `Chapter N`/`Ch. N`（大小写不敏感）。`normalizeMarker` 连 `·．.` 一并折叠。**保留 PR4 标点护栏**（标题禁句末标点 → `第四回中既将…` 仍不当标题）。
+2. **长度兜底（硬保证）**：新增 `SCENE_SOFT_TARGET=1500` + `splitToTarget` 作 `splitScenes` Pass 3——无损「段落→句末标点→定长硬切」级联 + 「发射在溢出之前」greedy 重装箱，保证**任一候选 ≤ 软目标 ≪ `SCENE_BODY_CAP=4000`**。截断+needs_review 退化成永不触发的纯 backstop（根治症状③）。
+3. **近重复检测**：3-gram Jaccard（去标点空白后），`NEAR_DUP_SIM=0.9`。**相邻** ≥ 阈值 → 合并保更长者；**非相邻** → `SceneCandidate.nearDuplicateOf` 标记最早匹配（合并 re-index 后的章内 0-based）。orchestrator `flagNearDuplicate` 把它转成 `needs_review`+synopsis 人读注记，**不自动删**（复现场景可能合法）。
+4. **顺序保持**：chunker 严格按物理位置切排，`source.chapter` 维持位置序，不做语义重排（doc-comment + spec §4 写明）。
+5. **三体裁脏 fixtures**：`lib/agent/__fixtures__/`（红楼带《》前缀+多版本重复 / 现代散文超长段+超长无标点串 / 网文短章+英译混排）。
+
+**踩坑（TDD 逮到的真 bug）**：近重复**吃掉了长度兜底的硬切片**——退化周期串（`字`×4001、同句重复）被硬切成多片后，因 trigram 集合极小、Jaccard 读成 ~1.0 又被「合并相邻」粘回，`length>1` 断言转红。修：加 `NEAR_DUP_MIN_TRIGRAMS=40` **多样性地板**——低熵文本不参与近重复判定。这是 watch-it-fail 才暴露的跨特性交互，纯靠 review 容易漏。
+
+**codex 冷读**（Phase 4.5，SCORE 7/10 过门禁）逼出 6 处收紧，全数吸收：F2 **弃用**原计划的「章号递增 sanity」（会错杀选集起于第80回/卷内重置/番外/乱序粘贴，得不偿失，只留 PR4 标点护栏）；F1 正则边界写死；F3 装箱数学+边界测试（3999/4000/4001/无标点长串）；F4 近重复加 ≥100 字门槛防误杀套语/诗词；F5 `nearDuplicateOf` 坐标系钉死；F6 fixtures 做脏。
+
+**demo 可讲一句**：把脏粘贴（带书名号回目、多版本重复、整篇无章回的现代散文）喂进去，章号不再全 1、超长不再被截、重复段被标出待人工确认——确定性 chunker 的鲁棒性是 agent 流水线可信的地基。
+
+门禁：`npm test` = **274 passed | 3 skipped**（+18 测；既有 256 零回归）｜`tsc` exit 0｜`lint` 0 warning。TDD 每循环先红：回目 5 红、长度兜底 4 红、近重复 2 红、orchestrator 1 红，均贴过原始输出。
+
+### PR9 用户实跑反馈·Critic 崩溃修复（2026-06-07，用户跑真实文件 `人生何处不青山.txt`）
+
+**症状**：前端「转换失败（chunk）：转换中断：未收到最终结果」。用 playwright 真浏览器 + 直连 API 复现后定位：**根因不是 chunker**——chunker 把这篇无章回的现代散文（12.3k 字）正确切成 9 个长度适中场景（max 1497 ≤ 1500，无截断），PR9 本身工作正常。真正的锅是**早就存在的 Critic 脆性**：DeepSeek 对这篇对白/歌词密集文本偶发返回缺 `suggestion` 的 critique，`critiqueScene` 按设计抛错，但 `orchestrator` **没包裹该调用** → 异常冒泡杀掉整条 9 场景 run（已转换的 8 场全丢）。PR9 把散文从「1 个被截的超大场景」修成「9 个真实场景」，于是 Critic 被调 9 次、必中这个脆性——红楼示例只生成少量规整场景所以从没触发。
+
+**修复**（`orchestrator.ts`，TDD 先红后绿）：`processCandidate` 两处 `critiqueScene` 调用包 `try/catch`，Critic 抛错时**保留已转换场景 + 打 `needs_review` + 继续**，绝不中断整条 run（best-effort 边界，正是 `critic.ts` 注释里「orchestrator decides how to react」原本该做、却漏做的）。不动 `critic.ts` 抛错契约（T10b/T10c 仍绿）。
+
+**真浏览器端到端验证**（playwright 驱动 + 真 DeepSeek ≈105s）：4 阶段全 ✅、9 张卡全出、`final_result` 正常、导出就位；Critic 失败的 7/9 场景诚实标 `needs_review`（场景本身转换是好的、可编辑可导出，只是没被 Critic 背书）而非崩溃。
+
+**决策（用户拍板）**：Critic 解析的更宽容化（丢畸形 issue 而非整条报废，可减少误标 needs_review）**不做**——崩溃已修、run 能跑完即止，保持 critic.ts 契约不动、PR9 收口最轻。needs_review 偏多是「这篇文本 + 这个模型」的特性，留作后续可选优化。
+
+**demo 可讲一句**：真实脏文件逼出的不是切分 bug 而是下游 Critic 的健壮性盲点——确定性 chunker 一变强，就把 LLM agent 的脆弱处顶到了台面上；防御性边界（一个 agent 失败不拖垮整条流水线）才是 agentic 系统能上真实输入的关键。
+
+门禁（含本修复）：`npm test` = **275 passed | 3 skipped**（+1）｜`tsc` exit 0｜`lint` 0 warning。
