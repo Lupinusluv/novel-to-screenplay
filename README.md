@@ -2,7 +2,7 @@
 
 把一部小说（≥3 章效果最佳）交给一支 **多 agent「AI 剧组」**，自动产出**结构化、可编辑、可溯源**的影视剧本初稿（YAML），全过程在前端**实时可见**。
 
-> 在线体验：**https://novel-to-screenplay-gtoh.onrender.com**　|　Demo 视频：**[B 站 · AI 小说转剧本项目展示](https://www.bilibili.com/video/BV1ySEb6TEuC)**
+> 在线体验：**[novel-to-screenplay-gtoh.onrender.com](https://novel-to-screenplay-gtoh.onrender.com)**　|　Demo 视频：**[B 站 · AI 小说转剧本项目展示](https://www.bilibili.com/video/BV1ySEb6TEuC)**
 >
 > 不想部署也能看：上面的在线地址点开就能用，内置多体裁示例，零配置。首次访问若是免费实例可能有 ~40s 冷启动，请稍候。
 
