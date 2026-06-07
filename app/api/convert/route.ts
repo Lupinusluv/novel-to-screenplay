@@ -22,6 +22,17 @@ import { createLLMClient, loadLLMConfigFromEnv } from "../../../lib/llm/client";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * The pipeline streams for up to a few minutes (a 20+ scene novel runs the
+ * Converter/Validator/Critic loop per scene). On serverless hosts the default
+ * function timeout (Vercel: 10s Hobby / 15s Pro) would cut every conversion off
+ * mid-stream, so we ask for the platform maximum. Vercel clamps this to the
+ * plan's ceiling (Hobby 60s, Pro 300s); a persistent host (`next start` on
+ * Render/Railway/a VPS) ignores it and has no per-request cap. Long samples
+ * (e.g. the 22-scene 红楼 example) need Pro-tier 300s or a persistent host.
+ */
+export const maxDuration = 300;
+
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream; charset=utf-8",
   "Cache-Control": "no-cache, no-transform",
