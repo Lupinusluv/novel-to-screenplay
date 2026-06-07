@@ -138,4 +138,27 @@ describe("pipelineReducer", () => {
     expect(s.status).toBe("error");
     expect(s.stages.scenes.status).toBe("error");
   });
+
+  it("carries a structured error code through to state.error (PR12 402)", () => {
+    const s = reduce([
+      { type: "stage_start", stage: "storybible" },
+      {
+        type: "error",
+        stage: "storybible",
+        message: "LLM request failed 402: Insufficient Balance",
+        code: "insufficient_balance",
+      },
+    ]);
+    expect(s.status).toBe("error");
+    expect(s.error?.code).toBe("insufficient_balance");
+  });
+
+  it("omits the code key entirely when the error has none", () => {
+    const s = reduce([
+      { type: "stage_start", stage: "storybible" },
+      { type: "error", stage: "storybible", message: "boom" },
+    ]);
+    expect(s.error).toEqual({ stage: "storybible", message: "boom" });
+    expect("code" in (s.error ?? {})).toBe(false);
+  });
 });

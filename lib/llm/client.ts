@@ -44,6 +44,62 @@ export interface LLMClient {
 
 const TRANSIENT_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
+/** Stable, machine-readable error classes the UI can react to without parsing a
+ *  formatted message string. Currently just balance exhaustion (the one failure
+ *  a public demo, burning the author's own key, will realistically hit). */
+export type LLMErrorCode = "insufficient_balance";
+
+/**
+ * A typed LLM failure carrying the raw HTTP `status` and, when recognised, a
+ * structured `code`. Classification happens here — the one place that sees both
+ * the status and the original body — so nothing downstream has to regex an
+ * already-formatted error message.
+ */
+export class LLMError extends Error {
+  status?: number;
+  code?: LLMErrorCode;
+  constructor(
+    message: string,
+    opts: { status?: number; code?: LLMErrorCode } = {},
+  ) {
+    super(message);
+    this.name = "LLMError";
+    this.status = opts.status;
+    this.code = opts.code;
+  }
+}
+
+/**
+ * Map an HTTP status + raw response body to a structured error code.
+ * Primary signal is `402 Payment Required` (DeepSeek returns this when the key
+ * runs out of balance). The body regex is a fallback for providers that report
+ * balance exhaustion under a different status — matched against the *raw* body
+ * (so a nested `{"error":{"message":"Insufficient Balance"}}` is caught too),
+ * never against a downstream-formatted message. NOTE: a blanket 402 → balance
+ * mapping is a demo-friendly heuristic, not the full semantics of every
+ * provider's 402; the raw `status` is preserved on LLMError for diagnostics.
+ */
+export function classifyLLMErrorCode(
+  status: number,
+  body: string,
+): LLMErrorCode | undefined {
+  if (status === 402) return "insufficient_balance";
+  if (/insufficient\s+balance|余额不足/i.test(body)) return "insufficient_balance";
+  return undefined;
+}
+
+/** Read the structured code off an unknown error (undefined if not an LLMError
+ *  or unclassified). Walks the `cause` chain so an LLMError wrapped by an agent
+ *  (e.g. "StoryBible map failed: …", { cause }) is still recognised. Lets the
+ *  orchestrator forward the code without `instanceof` noise at every call site. */
+export function llmErrorCode(err: unknown): LLMErrorCode | undefined {
+  for (let cur: unknown = err, depth = 0; cur != null && depth < 10; depth++) {
+    if (cur instanceof LLMError) return cur.code;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
 /**
  * Robustly pull a JSON value out of an LLM response that may wrap it in
  * markdown fences or surround it with prose.
@@ -166,7 +222,13 @@ export function createLLMClient(config: LLMConfig): LLMClient {
             await delay(retryBaseDelayMs * 2 ** attempt);
             continue;
           }
-          throw new Error(`LLM request failed ${res.status}: ${truncate(text, 200)}`);
+          // Non-transient (or last-attempt transient) HTTP failure. Keep the
+          // `LLM request failed <status>:` message format (isRetryable's legacy
+          // regex still matches) AND tag it structurally so the UI can react.
+          throw new LLMError(
+            `LLM request failed ${res.status}: ${truncate(text, 200)}`,
+            { status: res.status, code: classifyLLMErrorCode(res.status, text) },
+          );
         }
 
         const data = (await res.json()) as {
@@ -206,8 +268,12 @@ export function createLLMClient(config: LLMConfig): LLMClient {
 }
 
 function isRetryable(err: unknown): boolean {
-  // Errors already thrown for non-transient HTTP status are not retried
-  // (they are thrown directly above). Network errors land here.
+  // A typed LLMError is always a final HTTP failure (402/401/…) — never retry it
+  // (a 402 in particular must not burn extra calls). Explicit check decouples
+  // from the message format below.
+  if (err instanceof LLMError) return false;
+  // Legacy: errors thrown for non-transient HTTP status are not retried. Network
+  // errors (no such message) land here and are retryable.
   if (err instanceof Error) {
     return !/LLM request failed \d/.test(err.message);
   }

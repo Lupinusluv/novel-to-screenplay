@@ -21,4 +21,13 @@ export type PipelineEvent =
   | { type: "partial_result"; scene: Scene } // per-scene, completion order (E5b)
   | { type: "stage_done"; stage: Stage }
   | { type: "final_result"; screenplay: Screenplay; yaml: string } // last frame (E10)
-  | { type: "error"; stage: Stage; sceneId?: string; message: string };
+  | {
+      type: "error";
+      stage: Stage;
+      sceneId?: string;
+      message: string;
+      /** Structured failure class (e.g. "insufficient_balance"), when the LLM
+       *  layer recognised one — lets the UI react without parsing `message`.
+       *  Kept a loose string here so this contract does not import the llm layer. */
+      code?: string;
+    };

@@ -143,6 +143,7 @@ export async function critiqueScene(
   } catch (err) {
     throw new Error(
       `Critic ${scene.id}: LLM response was not parseable JSON: ${(err as Error).message}`,
+      { cause: err }, // preserve a structured LLMError (e.g. 402) for the UI
     );
   }
 

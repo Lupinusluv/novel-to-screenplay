@@ -8,7 +8,7 @@ import {
 import { validateScreenplay } from "./validator";
 import type { PipelineEvent } from "./events";
 import { fromYAML } from "../schema/yaml";
-import type { ChatMessage, LLMClient } from "../llm/client";
+import { LLMError, type ChatMessage, type LLMClient } from "../llm/client";
 
 // A two-chapter novel that chunks to one scene candidate per chapter (total 2).
 const NOVEL = `第一回 初见
@@ -399,5 +399,48 @@ describe("review fixes (#1–#4)", () => {
     const text = await readAll(pipelineToSSEStream(NOVEL, llm));
     const errorFrames = text.split("\n").filter((l) => l === "event: error").length;
     expect(errorFrames).toBe(1);
+  });
+});
+
+describe("PR12 — insufficient_balance escalates to a fatal error carrying the code", () => {
+  const balance402 = () =>
+    new LLMError("LLM request failed 402: Insufficient Balance", {
+      status: 402,
+      code: "insufficient_balance",
+    });
+
+  it("storybible-stage 402 → fatal error event with code insufficient_balance", async () => {
+    const events: PipelineEvent[] = [];
+    const llm: LLMClient = {
+      chat: async () => "",
+      chatJSON: async () => {
+        throw balance402(); // the first LLM call (map) runs out of balance
+      },
+    };
+    await expect(
+      runPipeline(NOVEL, llm, { onEvent: (e) => events.push(e) }),
+    ).rejects.toThrow();
+    const err = events.find((e) => e.type === "error");
+    expect(err && err.type === "error" && err.stage).toBe("storybible");
+    expect(err && err.type === "error" && err.code).toBe("insufficient_balance");
+  });
+
+  it("scene-stage 402 (after storybible OK) → fatal, NOT swallowed into a placeholder/final_result", async () => {
+    // Curator succeeds; the per-scene conversion is where the balance dies.
+    const llm: LLMClient = {
+      chat: async () => "",
+      chatJSON: async <T = unknown>(messages: ChatMessage[]) => {
+        const t = messages.map((m) => m.content).join("\n");
+        if (t.includes("逐章实体表") || t.includes("本章原文")) {
+          return MAP_ENTITIES as T;
+        }
+        throw balance402(); // scene convert → out of balance
+      },
+    };
+    const text = await readAll(pipelineToSSEStream(NOVEL, llm, { critic: false }));
+    expect(text).toContain("event: error\n");
+    expect(text).toContain("insufficient_balance");
+    // It must abort, not finish with a screenplay full of placeholders.
+    expect(text).not.toContain("event: final_result\n");
   });
 });

@@ -27,6 +27,7 @@ import {
   type SceneRevision,
 } from "./sceneConverter";
 import { critiqueScene, type CritiqueResult } from "./critic";
+import { llmErrorCode } from "../llm/client";
 import { toYAML } from "../schema/yaml";
 import { eventToSSE } from "./sse";
 import type { Scene, Screenplay } from "../schema/screenplay";
@@ -76,6 +77,16 @@ function throwIfAborted(signal?: AbortSignal): void {
     e.name = "AbortError";
     throw e;
   }
+}
+
+/** A global resource failure (e.g. the LLM key ran out of balance) is fatal for
+ *  the whole run: retrying or placeholdering is pointless because every further
+ *  call hits the same wall, and a screenplay full of placeholders + a misleading
+ *  final_result is worse than one clean error. Such errors must escape the
+ *  per-scene degrade-and-continue machinery and abort the pipeline so the UI can
+ *  show the friendly "demo out of credit" guidance (PR12). */
+function isFatalResourceError(err: unknown): boolean {
+  return llmErrorCode(err) === "insufficient_balance";
 }
 
 /** Stable identity of a scene for fixed-point / cycle detection (E3/E5). */
@@ -169,6 +180,9 @@ async function tryConvert(
     );
     return { ok: true, scene, issues };
   } catch (err) {
+    // A balance-exhausted key (or other fatal resource failure) must not be
+    // retried/placeholdered — let it abort the whole run (PR12).
+    if (isFatalResourceError(err)) throw err;
     const msg = (err as Error).message;
     if (/dangling references/.test(msg)) throw err;
     return { ok: false, error: msg };
@@ -271,7 +285,8 @@ async function processCandidate(
   let crit: CritiqueResult;
   try {
     crit = await critiqueScene(scene, item.candidate.text, bible, llm);
-  } catch {
+  } catch (err) {
+    if (isFatalResourceError(err)) throw err; // balance died → abort the run
     return flagNearDuplicate({ ...scene, needs_review: true }, item.candidate);
   }
   while (!crit.ok && ctries < budget) {
@@ -289,7 +304,8 @@ async function processCandidate(
     scene = re.scene;
     try {
       crit = await critiqueScene(scene, item.candidate.text, bible, llm);
-    } catch {
+    } catch (err) {
+      if (isFatalResourceError(err)) throw err; // balance died → abort the run
       return flagNearDuplicate({ ...scene, needs_review: true }, item.candidate);
     }
     ctries++;
@@ -298,21 +314,32 @@ async function processCandidate(
   return flagNearDuplicate(scene, item.candidate);
 }
 
-/** Bounded-concurrency pool; preserves index→slot mapping (E5b). */
+/** Bounded-concurrency pool; preserves index→slot mapping (E5b). On the first
+ *  worker throw it stops dispatching new items and rethrows that error after the
+ *  in-flight workers unwind — so a fatal failure (e.g. balance exhaustion) aborts
+ *  the run cleanly instead of letting sibling workers' later rejections surface
+ *  as unhandled promise rejections. */
 async function runPool(
   items: WorkItem[],
   worker: (item: WorkItem) => Promise<void>,
   concurrency: number,
 ): Promise<void> {
   let next = 0;
+  let firstErr: unknown;
   const runner = async () => {
-    while (next < items.length) {
+    while (next < items.length && firstErr === undefined) {
       const i = next++;
-      await worker(items[i]);
+      try {
+        await worker(items[i]);
+      } catch (err) {
+        if (firstErr === undefined) firstErr = err;
+        return;
+      }
     }
   };
   const n = Math.max(1, Math.min(concurrency, items.length || 1));
   await Promise.all(Array.from({ length: n }, runner));
+  if (firstErr !== undefined) throw firstErr;
 }
 
 /**
@@ -346,7 +373,12 @@ export async function runPipeline(
   try {
     bible = await curateStoryBible(chapters, llm);
   } catch (err) {
-    emit({ type: "error", stage: "storybible", message: (err as Error).message });
+    emit({
+      type: "error",
+      stage: "storybible",
+      message: (err as Error).message,
+      ...(llmErrorCode(err) ? { code: llmErrorCode(err) } : {}),
+    });
     throw err;
   }
   // FIX #3: a location-less bible cannot yield referentially-valid scenes; fail
@@ -439,7 +471,14 @@ export function pipelineToSSEStream(
         // throwing; only synthesize one here if it didn't (avoid duplicate frames).
         if (!sawError) {
           safeEnqueue(
-            eventToSSE({ type: "error", stage: "assemble", message: (err as Error).message }),
+            eventToSSE({
+              type: "error",
+              stage: "assemble",
+              message: (err as Error).message,
+              // Forward a structured code (e.g. a scene-stage 402 that escaped the
+              // pool) so the UI can still show the friendly guidance (PR12).
+              ...(llmErrorCode(err) ? { code: llmErrorCode(err) } : {}),
+            }),
           );
         }
       } finally {

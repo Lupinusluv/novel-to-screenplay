@@ -133,6 +133,40 @@ describe("ConverterApp", () => {
     expect(calls[1].novel).toBe("原始小说正文");
   });
 
+  it("shows friendly demo-out-of-credit guidance + GitHub link on an insufficient_balance error, hiding the raw provider message", () => {
+    const calls = startConversion("原始小说正文");
+    fireEvent.click(screen.getByRole("button", { name: "转换" }));
+    act(() => {
+      calls[0].onEvent({
+        type: "error",
+        stage: "storybible",
+        message: 'LLM request failed 402: {"error":{"message":"Insufficient Balance"}}',
+        code: "insufficient_balance",
+      });
+    });
+    // Human guidance is shown, not the raw provider payload.
+    expect(screen.getByText(/演示站额度已用尽/)).toBeInTheDocument();
+    expect(screen.queryByText(/Insufficient Balance/)).not.toBeInTheDocument();
+    // A clickable link points at the repo's local-deploy guide.
+    const link = screen.getByRole("link", { name: /部署|GitHub|快速开始/ });
+    expect(link).toHaveAttribute(
+      "href",
+      expect.stringContaining("github.com/Lupinusluv/novel-to-screenplay"),
+    );
+    // 重试 is still offered (a top-up could fix it without a reload).
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("still shows the raw message for an ordinary (non-balance) fatal error", () => {
+    const calls = startConversion("原始小说正文");
+    fireEvent.click(screen.getByRole("button", { name: "转换" }));
+    act(() => {
+      calls[0].onEvent({ type: "error", stage: "storybible", message: "boom-xyz" });
+    });
+    expect(screen.getByText(/boom-xyz/)).toBeInTheDocument();
+    expect(screen.queryByText(/额度/)).not.toBeInTheDocument();
+  });
+
   it("applies a YAML edit and reflects the new title in the header", () => {
     const calls = startConversion();
     fireEvent.click(screen.getByRole("button", { name: "转换" }));

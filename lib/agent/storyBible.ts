@@ -364,6 +364,7 @@ export async function curateStoryBible(
           `StoryBible map failed for chapter ${chapter}: ${
             (err as Error).message
           }`,
+          { cause: err }, // preserve a structured LLMError (e.g. 402) for the UI
         );
       }
       const { entities, dropped } = coerceMapEntities(raw);

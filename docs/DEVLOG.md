@@ -387,3 +387,27 @@
 - **逐文件冷读结论**：`/api/sample`（id 走 `sampleFileById` 精确查表、`path.join(cwd,"samples",file)`、未知 id→404，无路径穿越）、`/api/convert`（`MAX_NOVEL_CHARS=200_000` 体积闸 + `maxDuration`）、`manifest.ts`（精确匹配、`SAMPLE_METAS` 剥 `file` 不泄露）、`concatFiles.ts`（纯客户端、`CHAPTER_RE` 单字符类无回溯）、`orchestrator.ts`（Critic 抛错 `try/catch` 降级 needs_review 不中断、近重复只标不删）——**均无问题**。
 - **逮到 1 个真问题并修复（中危 ReDoS）**：`chunker.ts` 的 `CHAPTER_HEADING` 对每行运行，其惰性 `TITLE` 类 `[^标点]*?` 与结尾 `[ \t　]*$` 字符集**重叠**，构造单行「标记+非空白+海量全角空格+非空白」触发**二次回溯**，在服务端 `/api/convert` 上能把单线程 Node 卡死数十秒（DoS，且在 200k 输入闸内可达）。**修**：加 `MAX_HEADING_LINE=200` 行长闸——真实标题行天然很短，超长行直接跳过正则、当正文处理。+1 回归测试（12 万全角空格的恶意行，断言 <1000ms 完成且不被解析为标题）。
 - 门禁：`npm test` **289 passed | 3 skipped**（+1 ReDoS 回归）、`tsc --noEmit` exit 0。
+
+---
+
+## PR12 · 402 余额耗尽友好降级 + 本地部署引导（2026-06-07）✅
+
+**背景**：仓库转 public、公开 Render 站点烧的是作者自己的 LLM key。余额耗尽后，转换会在第一笔 LLM 调用（StoryBible Curator）撞 provider 的 **HTTP 402 `Insufficient Balance`**，而前端原样把 `转换失败（storybible）：LLM request failed 402: {"error":{"message":"Insufficient Balance"...}}` 抛给用户——非技术评审者既难懂、又像系统崩了。本 PR 把它换成**人话引导 + 本地部署链接**。
+
+**设计（gstack spec + codex 冷读）**：spec `docs/superpowers/specs/2026-06-07-pr12-graceful-402-design.md`。核心决策 = **把 provider 402 在 HTTP 响应层归一成结构化错误码 `insufficient_balance`，下游只透传 code，前端按 code 显示文案**——而非在前端对已格式化的错误字符串做脆弱 regex。**codex 冷读 SCORE 6/10**，逮到两个 High 全吸收（见下）。
+
+**改了什么（TDD，先红后绿，4 层）**：
+1. **`lib/llm/client.ts`（分类源头）**：新增 `LLMError`（带 `status`/`code`）、`classifyLLMErrorCode(status, body)`（402 → `insufficient_balance`，外加原始 body regex 兜底 `insufficient balance|余额不足`）、`llmErrorCode(err)`（**走 `cause` 链**，识别被 agent 包装过的 LLMError）。非 transient HTTP 失败的 throw 换成 `LLMError`，**保留 `LLM request failed <status>:` message 格式**（既有 `isRetryable` regex 仍命中）。
+2. **`lib/agent/events.ts` + `pipelineState.ts`**：`error` 事件 + `state.error` 各加可选 `code?: string`（`code` 自动随 `JSON.stringify` 过 SSE、`JSON.parse` 带回，序列化链零改动）。
+3. **`lib/agent/orchestrator.ts`**：storybible catch emit 附 `code`；`pipelineToSSEStream` 兜底 catch 也带 `code`。
+4. **`app/components/ConverterApp.tsx`**：`state.error.code === "insufficient_balance"` → 渲染琥珀色友好块「演示站额度已用尽 🪫 + 本地部署引导 + 可点 GitHub 链接」，**隐藏原始 provider 报文**；其它 error 维持原红色 `转换失败（stage）：message`。文案/链接常量定义在组件内，**不**从 `lib/agent/*` import（守 E10 client 边界）。
+
+**codex 两个 High（已改）——这才是本 PR 真正变扎实的地方**：
+- **余额耗尽不必发生在第一笔调用**：StoryBible 成功后，scene convert/critic 阶段同样会 402。原 `tryConvert` 把非 dangling 的 throw 吞成「可重试失败→占位场景→scene warning」，前端永不显示 402、**甚至照常产出 `final_result`（一部全是占位场景的剧本）**。改：余额耗尽是**全局资源失败**，`isFatalResourceError(err)`（= `llmErrorCode==="insufficient_balance"`）在 `tryConvert` 与两处 critic try/catch 处**重新抛出**（与既有 `dangling references` 同款逃逸），从任意 LLM 阶段升级为 fatal 中止整条 run；`runPool` 改成**捕获首个异常、停止派发、向上重抛**（顺带消除「一个 worker throw 后其余 worker rejection 变 unhandled」的隐患）。测试实证：scene 阶段 402 现在产 1 条 fatal error（带 code）、**无 `final_result`、无占位**。
+- **`LLMError` 必须显式 non-retryable**：`isRetryable` 顶部加 `if (err instanceof LLMError) return false`，双保险杜绝 402 被当网络错误多烧几次。
+
+**踩坑（cause 链）**：storyBible/sceneConverter/critic 的 `chatJSON` 调用都把底层错误**重新包装**成 `new Error("...map failed: " + msg)`，丢了 `LLMError` 类型——首版测试里 `code` 一直 undefined。修：三处 wrap 加 `{ cause: err }`，`llmErrorCode` 走 cause 链（深度上限 10 防环）。这样 agent 包装不破坏结构化分类。
+
+**门禁**：`npm test` **302 passed | 3 skipped**（+13：client 6 / pipelineState 2 / orchestrator 2 / ConverterApp 2 ……实为 +13 含 classify 单测）、`tsc --noEmit` exit 0、`lint` 干净（仅既有 manifest 无关 warning）。TDD 每层先红（贴了 instanceof undefined / code undefined / 友好文案缺失的红）后绿。
+
+**demo 可讲的一句话**：「公开 demo 烧作者的 key，余额耗尽不再甩一脸 `402 Insufficient Balance`——而是把 provider 402 在 HTTP 层归一成结构化错误码，前端按码显示『演示站额度已用尽，本地部署配自己的 key 即可』；且这类全局资源失败会从任意 agent 阶段干净地中止整条流水线，绝不产出一部全是占位场景的假剧本。」

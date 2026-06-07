@@ -563,6 +563,7 @@ export async function convertScene(
       `Scene Converter ${sceneId}: LLM response was not parseable JSON: ${
         (err as Error).message
       }`,
+      { cause: err }, // preserve a structured LLMError (e.g. 402) for the UI
     );
   }
 

@@ -36,6 +36,14 @@ import { ScreenplayView } from "./ScreenplayView";
 
 type Action = { kind: "reset" } | { kind: "event"; event: PipelineEvent };
 
+// PR12: the public demo burns the author's own LLM key; when it runs out the
+// provider returns 402 and the llm layer tags it `insufficient_balance`. Show
+// human guidance + a local-deploy link instead of the raw provider payload.
+// Defined here (a client component) so we never import copy/links from lib/agent
+// (E10 client-boundary discipline).
+const REPO_DEPLOY_URL =
+  "https://github.com/Lupinusluv/novel-to-screenplay#快速开始本地克隆即跑";
+
 function appReducer(state: PipelineState, action: Action): PipelineState {
   if (action.kind === "reset") return initialPipelineState();
   return pipelineReducer(state, action.event);
@@ -150,20 +158,47 @@ export function ConverterApp({
         busy={inFlight}
       />
 
-      {state.error && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          <span>
-            转换失败（{state.error.stage}）：{state.error.message}
-          </span>
-          <button
-            type="button"
-            onClick={retryConversion}
-            className="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/40"
-          >
-            重试
-          </button>
-        </div>
-      )}
+      {state.error &&
+        (state.error.code === "insufficient_balance" ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            <p className="font-semibold">演示站额度已用尽 🪫</p>
+            <p className="leading-6">
+              本站用的是作者的 API key，额度已经用完了。你仍可
+              <strong>浏览内置示例与界面</strong>；要实际体验「转换」，请克隆仓库本地部署、
+              配置你自己的 API key（几步即可，见 README「快速开始」）。
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <a
+                href={REPO_DEPLOY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+              >
+                在 GitHub 查看部署步骤 →
+              </a>
+              <button
+                type="button"
+                onClick={retryConversion}
+                className="rounded-md border border-amber-400 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40"
+              >
+                重试
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            <span>
+              转换失败（{state.error.stage}）：{state.error.message}
+            </span>
+            <button
+              type="button"
+              onClick={retryConversion}
+              className="rounded-md border border-red-400 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/40"
+            >
+              重试
+            </button>
+          </div>
+        ))}
 
       {showResults ? (
         <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">

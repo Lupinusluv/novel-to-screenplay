@@ -21,6 +21,8 @@
 
 ## 快速开始（本地克隆即跑）
 
+> 💡 在线 demo 用的是作者自己的 API key——若你在线上点「转换」看到 **「演示站额度已用尽」** 的提示，说明额度烧完了。**按下面三步本地部署、配上你自己的 key 即可完整体验**（额度自付、不受演示站影响）。
+
 ### 前置
 - **Node.js ≥ 20.9**（推荐 20 或 22 LTS）
 - 一个 **OpenAI 兼容**的 LLM API key（DeepSeek / OpenAI / 智谱 / 本地模型皆可；demo 用 DeepSeek）
@@ -28,7 +30,7 @@
 ### 步骤
 ```bash
 # 1. 克隆并进入目录
-git clone <仓库地址> && cd novel-to-screenplay
+git clone https://github.com/Lupinusluv/novel-to-screenplay.git && cd novel-to-screenplay
 
 # 2. 安装依赖
 npm install
@@ -52,7 +54,7 @@ npm run build && npm start
 
 ### 验证测试（不消耗 key，走 fixture）
 ```bash
-npm test            # vitest，288 passed | 3 skipped
+npm test            # vitest，302 passed | 3 skipped
 npx tsc --noEmit    # 类型检查
 ```
 

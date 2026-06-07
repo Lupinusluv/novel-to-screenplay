@@ -3,6 +3,9 @@ import {
   extractJSON,
   createLLMClient,
   loadLLMConfigFromEnv,
+  LLMError,
+  classifyLLMErrorCode,
+  llmErrorCode,
   type LLMConfig,
 } from "./client";
 
@@ -93,6 +96,70 @@ describe("createLLMClient.chat", () => {
       client.chat([{ role: "user", content: "hi" }]),
     ).rejects.toThrow();
     expect(fetchImpl).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+  });
+});
+
+describe("classifyLLMErrorCode (402 → insufficient_balance)", () => {
+  it("classifies any 402 as insufficient_balance (demo-friendly, status preserved separately)", () => {
+    expect(classifyLLMErrorCode(402, "")).toBe("insufficient_balance");
+  });
+
+  it("classifies a non-402 body that mentions Insufficient Balance (provider quirk fallback)", () => {
+    const body = '{"error":{"message":"Insufficient Balance","type":"x"}}';
+    expect(classifyLLMErrorCode(400, body)).toBe("insufficient_balance");
+  });
+
+  it("matches the Chinese 余额不足 phrasing too", () => {
+    expect(classifyLLMErrorCode(403, "账户余额不足，请充值")).toBe(
+      "insufficient_balance",
+    );
+  });
+
+  it("returns undefined for an ordinary auth failure", () => {
+    expect(classifyLLMErrorCode(401, '{"error":"unauthorized"}')).toBeUndefined();
+  });
+});
+
+describe("createLLMClient.chat — structured 402 error", () => {
+  it("throws an LLMError carrying status 402 + code insufficient_balance", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { message: "Insufficient Balance" } }, 402),
+    );
+    const client = createLLMClient(baseConfig({ fetchImpl }));
+
+    const err = await client
+      .chat([{ role: "user", content: "hi" }])
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(LLMError);
+    expect((err as LLMError).status).toBe(402);
+    expect((err as LLMError).code).toBe("insufficient_balance");
+    expect(llmErrorCode(err)).toBe("insufficient_balance");
+  });
+
+  it("does NOT retry a 402 (it is not transient — fetch called exactly once)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { message: "Insufficient Balance" } }, 402),
+    );
+    const client = createLLMClient(baseConfig({ fetchImpl, maxRetries: 2 }));
+
+    await client.chat([{ role: "user", content: "hi" }]).catch(() => {});
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("a 401 throws an LLMError with no insufficient_balance code", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: "nope" }, 401));
+    const client = createLLMClient(baseConfig({ fetchImpl }));
+
+    const err = await client
+      .chat([{ role: "user", content: "hi" }])
+      .catch((e) => e);
+
+    expect(err).toBeInstanceOf(LLMError);
+    expect((err as LLMError).status).toBe(401);
+    expect((err as LLMError).code).toBeUndefined();
+    expect(llmErrorCode(err)).toBeUndefined();
   });
 });
 
