@@ -307,3 +307,22 @@
 > 已知/排后续：#4 现代散文无章回体切分线索 → 整篇成 1 个超大场景候选超 `SCENE_BODY_CAP=4000` → 诚实截断 + needs_review（设计如此，非 bug）；正解是后端 chunker 增「按空行/长度切场景」+ 调上限，属 C 档单独后端 PR。
 
 门禁：`npm test` = **256 passed | 3 skipped**（+3 测）｜`tsc` exit 0｜`lint` 0 warning。
+
+## PR9 · 切分鲁棒性（后端 chunker，纯 `lib/agent`）✅（2026-06-07）
+
+**起因**：用户实跑（真 DeepSeek + 真红楼）三处失守 → 这次根治。设计走 gstack `/gstack-spec`（轻量档：spec + **一次 codex 冷读** 复审，**不跑** `/code-review`+`/security-review` 大审查——用户拍板并入下次前端 PR）。实现走 superpowers TDD，5 个 red→green 循环。spec 见 `docs/superpowers/specs/2026-06-07-pr9-chunker-robustness-design.md`。
+
+**改了什么**（`lib/agent/chunker.ts` + 3 行 `orchestrator.ts`）：
+1. **回目识别鲁棒化**：`CHAPTER_HEADING` 由「行首 `^第N回`」重写成「可选 `《》`/`【】` 前缀 + 主标记 + 可选标题」，分件拼装可读。主标记支持 `第N卷/章/回/节/部/篇`、组合 `第N卷·第N章`（两级都留）、英译 `Chapter N`/`Ch. N`（大小写不敏感）。`normalizeMarker` 连 `·．.` 一并折叠。**保留 PR4 标点护栏**（标题禁句末标点 → `第四回中既将…` 仍不当标题）。
+2. **长度兜底（硬保证）**：新增 `SCENE_SOFT_TARGET=1500` + `splitToTarget` 作 `splitScenes` Pass 3——无损「段落→句末标点→定长硬切」级联 + 「发射在溢出之前」greedy 重装箱，保证**任一候选 ≤ 软目标 ≪ `SCENE_BODY_CAP=4000`**。截断+needs_review 退化成永不触发的纯 backstop（根治症状③）。
+3. **近重复检测**：3-gram Jaccard（去标点空白后），`NEAR_DUP_SIM=0.9`。**相邻** ≥ 阈值 → 合并保更长者；**非相邻** → `SceneCandidate.nearDuplicateOf` 标记最早匹配（合并 re-index 后的章内 0-based）。orchestrator `flagNearDuplicate` 把它转成 `needs_review`+synopsis 人读注记，**不自动删**（复现场景可能合法）。
+4. **顺序保持**：chunker 严格按物理位置切排，`source.chapter` 维持位置序，不做语义重排（doc-comment + spec §4 写明）。
+5. **三体裁脏 fixtures**：`lib/agent/__fixtures__/`（红楼带《》前缀+多版本重复 / 现代散文超长段+超长无标点串 / 网文短章+英译混排）。
+
+**踩坑（TDD 逮到的真 bug）**：近重复**吃掉了长度兜底的硬切片**——退化周期串（`字`×4001、同句重复）被硬切成多片后，因 trigram 集合极小、Jaccard 读成 ~1.0 又被「合并相邻」粘回，`length>1` 断言转红。修：加 `NEAR_DUP_MIN_TRIGRAMS=40` **多样性地板**——低熵文本不参与近重复判定。这是 watch-it-fail 才暴露的跨特性交互，纯靠 review 容易漏。
+
+**codex 冷读**（Phase 4.5，SCORE 7/10 过门禁）逼出 6 处收紧，全数吸收：F2 **弃用**原计划的「章号递增 sanity」（会错杀选集起于第80回/卷内重置/番外/乱序粘贴，得不偿失，只留 PR4 标点护栏）；F1 正则边界写死；F3 装箱数学+边界测试（3999/4000/4001/无标点长串）；F4 近重复加 ≥100 字门槛防误杀套语/诗词；F5 `nearDuplicateOf` 坐标系钉死；F6 fixtures 做脏。
+
+**demo 可讲一句**：把脏粘贴（带书名号回目、多版本重复、整篇无章回的现代散文）喂进去，章号不再全 1、超长不再被截、重复段被标出待人工确认——确定性 chunker 的鲁棒性是 agent 流水线可信的地基。
+
+门禁：`npm test` = **274 passed | 3 skipped**（+18 测；既有 256 零回归）｜`tsc` exit 0｜`lint` 0 warning。TDD 每循环先红：回目 5 红、长度兜底 4 红、近重复 2 红、orchestrator 1 红，均贴过原始输出。

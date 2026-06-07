@@ -136,6 +136,17 @@ function placeholderScene(
   };
 }
 
+/** PR9: if the chunker flagged this candidate as a non-adjacent near-duplicate
+ *  of an earlier one (multi-version paste), mark the scene needs_review with a
+ *  human note. Never deletes — a recurring passage may be legitimate; the call
+ *  leaves the judgment to a person. */
+function flagNearDuplicate(scene: Scene, candidate: SceneCandidate): Scene {
+  if (candidate.nearDuplicateOf === undefined) return scene;
+  if (scene.synopsis.includes("疑似与本章")) return scene; // idempotent
+  const note = `（疑似与本章第 ${candidate.nearDuplicateOf + 1} 个场景重复，或为多版本粘贴所致，请人工确认）`;
+  return { ...scene, needs_review: true, synopsis: scene.synopsis + note };
+}
+
 type TryResult =
   | { ok: true; scene: Scene; issues: ConversionIssue[] }
   | { ok: false; error: string };
@@ -243,13 +254,13 @@ async function processCandidate(
       sceneId: scene.id,
       message: det.errorMsg ?? "scene conversion failed",
     });
-    return scene; // placeholder; skip the Critic
+    return flagNearDuplicate(scene, item.candidate); // placeholder; skip the Critic
   }
 
   const criticOn = opts.critic ?? true;
   const scope = opts.criticScope ?? "all";
   const inScope = scope === "all" || scene.needs_review === true;
-  if (!criticOn || !inScope) return scene;
+  if (!criticOn || !inScope) return flagNearDuplicate(scene, item.candidate);
 
   const seen = new Set([sceneHash(scene)]);
   let ctries = 0;
@@ -271,7 +282,7 @@ async function processCandidate(
     ctries++;
   }
   if (!crit.ok) scene = { ...scene, needs_review: true };
-  return scene;
+  return flagNearDuplicate(scene, item.candidate);
 }
 
 /** Bounded-concurrency pool; preserves index→slot mapping (E5b). */

@@ -113,6 +113,35 @@ describe("runPipeline (orchestrator: wiring + self-correction + events)", () => 
     expect(report.duplicateSceneIds).toEqual([]);
   });
 
+  it("PR9 — surfaces a non-adjacent near-duplicate candidate as needs_review", async () => {
+    // A chapter whose body repeats a long passage (multi-version paste). The
+    // chunker flags the 3rd candidate as nearDuplicateOf the 1st; the
+    // orchestrator must turn that into needs_review + a human-readable note,
+    // WITHOUT deleting the scene (a recurring passage may be legitimate).
+    const PASSAGE =
+      "林黛玉抛父进京都那日清晨天色微明贾府门前车马喧嚣众人早起洒扫庭除迎接远客" +
+      "王熙凤携丫鬟立于阶下笑语盈盈贾母端坐厅中等候多时宝玉闻讯急急赶来一睹神仙" +
+      "似的妹妹众姊妹亦皆好奇张望整个荣国府上下因这位姑娘的到来而显得格外热闹非常";
+    const OTHER =
+      "薛蟠在金陵城中惹下人命官司冯渊一家告到衙门贾雨村新任应天府尹徇情枉法胡乱" +
+      "判了一桩糊涂案门子献上护官符提点四大家族盘根错节牵一发而动全身不可轻慢半分";
+    const novel = `第一回 多版本\n${PASSAGE}\n***\n${OTHER}\n***\n${PASSAGE}`;
+    const { llm } = fakeLLM();
+    const sp = await runPipeline(novel, llm, { critic: false });
+
+    expect(sp.scenes.map((s) => s.id)).toEqual([
+      "scene_1_1",
+      "scene_1_2",
+      "scene_1_3",
+    ]);
+    const dup = sp.scenes[2];
+    expect(dup.needs_review).toBe(true);
+    expect(dup.synopsis).toContain("重复");
+    // The original and the unrelated middle scene are not flagged for this.
+    expect(sp.scenes[0].needs_review).toBeFalsy();
+    expect(sp.scenes[1].needs_review).toBeFalsy();
+  });
+
   it("T15 — emits stages in order with a per-scene progress counter", async () => {
     const events: PipelineEvent[] = [];
     const { llm } = fakeLLM();

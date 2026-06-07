@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { chunkNovel, splitScenes } from "./chunker";
+import { chunkNovel, splitScenes, SCENE_SOFT_TARGET } from "./chunker";
 
 /** Scene candidate texts for a single-chapter body. */
 function scenesOf(body: string): string[] {
@@ -83,6 +83,77 @@ describe("chunkNovel · chapters", () => {
     expect(chapters[0].body).toContain("此開卷第一回也");
   });
 
+  it("recognizes a heading carrying a 《书名》 prefix (the real dogfood bug)", () => {
+    // User's real paste: `《红楼梦》第三回 …`. The `《》` prefix made the
+    // line fail `^…第N回`, collapsing the whole novel to 1 chapter with
+    // every scene's source.chapter === 1.
+    const raw = [
+      "《红楼梦》第一回 甄士隐",
+      "正文一。",
+      "《红楼梦》第二回 贾夫人",
+      "正文二。",
+      "《红楼梦》第三回 林黛玉",
+      "正文三。",
+    ].join("\n");
+    const { chapters } = chunkNovel(raw);
+    expect(chapters.map((c) => c.marker)).toEqual(["第一回", "第二回", "第三回"]);
+    expect(chapters[0].title).toBe("甄士隐");
+    expect(chapters[0].body).not.toContain("第一回");
+    expect(chapters[0].body).not.toContain("红楼梦");
+  });
+
+  it("recognizes a 【栏目】 prefix and a full-width space after the prefix", () => {
+    const raw = ["【正文】　第1章 开端", "甲。", "【正文】　第2章 发展", "乙。"].join("\n");
+    expect(chunkNovel(raw).chapters.map((c) => c.marker)).toEqual(["第1章", "第2章"]);
+  });
+
+  it("recognizes English-translation headings (Chapter N / Ch. N), title optional", () => {
+    const raw = [
+      "Chapter 1: The Storm",
+      "He walked in.",
+      "Ch. 2 Aftermath",
+      "She left.",
+      "CHAPTER 3",
+      "The end.",
+    ].join("\n");
+    const { chapters } = chunkNovel(raw);
+    expect(chapters).toHaveLength(3);
+    expect(chapters[0].title).toBe("The Storm");
+    expect(chapters[1]).toMatchObject({ title: "Aftermath" });
+    expect(chapters[2].title).toBe("");
+  });
+
+  it("recognizes 卷·章 combo and 节/部/篇 markers, keeping both levels in marker", () => {
+    const raw = [
+      "第一卷·第一章 起",
+      "甲。",
+      "第一卷 第二章 承",
+      "乙。",
+      "第三节 转",
+      "丙。",
+    ].join("\n");
+    const { chapters } = chunkNovel(raw);
+    expect(chapters.map((c) => c.marker)).toEqual([
+      "第一卷第一章",
+      "第一卷第二章",
+      "第三节",
+    ]);
+  });
+
+  it("recognizes 第N回：标题 with a colon separator", () => {
+    const raw = ["第三回：黛玉进府", "正文。"].join("\n");
+    const { chapters } = chunkNovel(raw);
+    expect(chapters[0]).toMatchObject({ marker: "第三回", title: "黛玉进府" });
+  });
+
+  it("does NOT treat a bare number line or roman-numeral chapter as a heading", () => {
+    // Out-of-scope by design: bare numbers collide with phone numbers / years
+    // / lists; roman numerals are not parsed.
+    const raw = ["1", "正文一。", "01", "正文二。", "Chapter IV", "正文三。"].join("\n");
+    const { chapters } = chunkNovel(raw);
+    expect(chapters).toHaveLength(1); // no heading recognized → single chapter
+  });
+
   it("does not treat an in-text reference like '第四回中…' as a heading", () => {
     // Real pitfall from 红楼梦 source: a body line begins with `第四回中既將…`.
     // The anchored heading shape (marker then whitespace+title or EOL) rejects
@@ -154,12 +225,119 @@ describe("splitScenes · scene candidates", () => {
     expect(scenesOf(bigGap)).toHaveLength(2);
   });
 
+  it("length fallback: splits an over-target paragraph blob on paragraph breaks", () => {
+    // Modern prose with no chapter/separator/cue signal but real paragraph
+    // breaks (single blank lines). Each paragraph ~600 chars; 4 of them blow
+    // past the soft target, so they must be packed into <=target candidates.
+    const para = (n: number) => `${"段".repeat(600)}${n}`;
+    const body = [para(1), para(2), para(3), para(4)].join("\n\n");
+    const scenes = splitScenes(body);
+    expect(scenes.length).toBeGreaterThan(1);
+    for (const s of scenes) expect(s.text.length).toBeLessThanOrEqual(SCENE_SOFT_TARGET);
+  });
+
+  it("length fallback: splits a single over-target paragraph on sentence punctuation", () => {
+    // One paragraph, no blank lines, but sentence-ending punctuation. Must
+    // split on 。！？ so no candidate exceeds the soft target.
+    const sentence = "他走进房间看了看四周然后坐下来又站起来。";
+    const body = sentence.repeat(200); // ~4000 chars, single paragraph
+    const scenes = splitScenes(body);
+    expect(scenes.length).toBeGreaterThan(1);
+    for (const s of scenes) expect(s.text.length).toBeLessThanOrEqual(SCENE_SOFT_TARGET);
+    // Lossless: rejoining recovers the original (no chars dropped/added).
+    expect(scenes.map((s) => s.text).join("")).toBe(body);
+  });
+
+  it("length fallback: hard-slices a punctuation-free long string (backstop of last resort)", () => {
+    const body = "字".repeat(4001); // no punctuation, no breaks at all
+    const scenes = splitScenes(body);
+    expect(scenes.length).toBeGreaterThan(1);
+    for (const s of scenes) expect(s.text.length).toBeLessThanOrEqual(SCENE_SOFT_TARGET);
+    expect(scenes.map((s) => s.text).join("")).toBe(body);
+  });
+
+  it("length fallback: leaves an under-target body as a single candidate", () => {
+    const body = "短".repeat(SCENE_SOFT_TARGET - 1);
+    expect(splitScenes(body)).toHaveLength(1);
+  });
+
+  // A long, varied passage (distinct trigrams ≈ length) so a tiny suffix barely
+  // moves the Jaccard score, and well over NEAR_DUP_MIN_LEN.
+  const PASSAGE =
+    "林黛玉抛父进京都那日清晨天色微明贾府门前车马喧嚣众人早起洒扫庭除迎接远客" +
+    "王熙凤携丫鬟立于阶下笑语盈盈贾母端坐厅中等候多时宝玉闻讯急急赶来一睹神仙" +
+    "似的妹妹众姊妹亦皆好奇张望整个荣国府上下因这位姑娘的到来而显得格外热闹非常";
+  const OTHER =
+    "薛蟠在金陵城中惹下人命官司冯渊一家告到衙门贾雨村新任应天府尹徇情枉法胡乱" +
+    "判了一桩糊涂案门子献上护官符提点四大家族的根基盘根错节牵一发而动全身不可轻慢";
+
+  it("near-dup: merges adjacent near-identical candidates, keeping the longer", () => {
+    const longer = PASSAGE + "。事后又添了几句闲话作罢。";
+    const body = [PASSAGE, "***", longer].join("\n");
+    const scenes = splitScenes(body);
+    expect(scenes).toHaveLength(1);
+    expect(scenes[0].text).toContain("事后又添了几句闲话");
+  });
+
+  it("near-dup: flags a NON-adjacent near-duplicate via nearDuplicateOf, keeps both", () => {
+    const body = [PASSAGE, "***", OTHER, "***", PASSAGE].join("\n");
+    const scenes = splitScenes(body);
+    expect(scenes).toHaveLength(3);
+    expect(scenes[0].nearDuplicateOf).toBeUndefined();
+    expect(scenes[2].nearDuplicateOf).toBe(0);
+  });
+
+  it("near-dup: does NOT touch short repeated candidates (formulaic-dialogue guard)", () => {
+    const body = ["「好。」", "***", "「好。」"].join("\n");
+    const scenes = splitScenes(body);
+    expect(scenes).toHaveLength(2);
+    expect(scenes.every((s) => s.nearDuplicateOf === undefined)).toBe(true);
+  });
+
   it("trims candidate text and re-indexes from 0", () => {
     const body = "  甲。  \n***\n  乙。  ";
     expect(splitScenes(body)).toEqual([
       { index: 0, text: "甲。" },
       { index: 1, text: "乙。" },
     ]);
+  });
+});
+
+describe("chunkNovel · PR9 dirty fixtures (three genres)", () => {
+  const fixture = (name: string) =>
+    readFileSync(join(process.cwd(), "lib", "agent", "__fixtures__", name), "utf8");
+
+  it("红楼·脏: 《》-prefixed + clean headings mix → 3 chapters, not collapsed to 1", () => {
+    const { chapters } = chunkNovel(fixture("honglou-prefixed-dirty.txt"));
+    expect(chapters.map((c) => c.marker)).toEqual(["第一回", "第二回", "第三回"]);
+    // The 《书名》 prefix must NOT leak into the body (the original bug).
+    expect(chapters[0].body).not.toContain("红楼梦");
+    expect(chapters.every((c) => c.title.length > 0)).toBe(true);
+  });
+
+  it("红楼·脏: a multi-version repeated passage is flagged as a near-duplicate", () => {
+    const { chapters } = chunkNovel(fixture("honglou-prefixed-dirty.txt"));
+    const ch3 = chapters[2];
+    expect(ch3.sceneCandidates.length).toBeGreaterThanOrEqual(3);
+    expect(ch3.sceneCandidates.some((c) => c.nearDuplicateOf !== undefined)).toBe(true);
+  });
+
+  it("现代散文·无章回: 1 untitled chapter, >1 candidate, none over the soft target", () => {
+    const { chapters } = chunkNovel(fixture("modern-prose-no-headings.txt"));
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].marker).toBe("");
+    const cands = chapters[0].sceneCandidates;
+    expect(cands.length).toBeGreaterThan(1);
+    for (const c of cands) expect(c.text.length).toBeLessThanOrEqual(SCENE_SOFT_TARGET);
+  });
+
+  it("网文短章: 5 chapters incl. English Chapter/Ch., ~1 candidate each, order kept", () => {
+    const { chapters } = chunkNovel(fixture("webnovel-short-chapters.txt"));
+    expect(chapters).toHaveLength(5);
+    expect(chapters.slice(0, 3).map((c) => c.marker)).toEqual(["第1章", "第2章", "第3章"]);
+    expect(chapters[3].title).toBe("Showdown");
+    expect(chapters[4].title).toBe("Epilogue");
+    for (const c of chapters) expect(c.sceneCandidates.length).toBe(1);
   });
 });
 
