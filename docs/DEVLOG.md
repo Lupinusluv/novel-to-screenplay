@@ -370,3 +370,20 @@
 - **编码坑**：素材一半是 GBK（人生何处不青山/轮回/追忆/红楼36回），一半 UTF-8。用 python 逐文件探测 `utf-8→gb18030` 解码后统一写 UTF-8，**全程不经 LLM 输出**（shell/python 搬运，绕开「逐字复现已出版作品」的内容过滤——上一轮就栽在这）。保留 `honglou-meng-ch1-3.txt`（chunker.test/smoke 仍引用），删掉上一轮原创占位样本。
 - **验证**：chunker smoke 4 样本（红楼 3 章 22 场 / 网文 2 章 24 场 / 散文 1 章 2 场 / 意识流 1 章 11 场，回目标记识别正确、max 场景 ≤1500 无截断）；真浏览器 E2E 实跑 **散文 / 古典章回(22 场) / 意识流** 三类全绿（网文的人生何处不青山半截在 PR9 已实跑）。门禁：`npm test` **288 passed | 3 skipped**、`tsc` exit 0。
 - **已知小瑕**：无明确主题的散文/意识流，LLM 偶尔给不出剧名 → 标题落「未命名剧本」。纯展示层、不阻塞，留作可选优化。
+
+## PR11 · README + 部署上线 + 欠账大审查收尾（2026-06-07）✅
+
+**背景**：转 public 收尾——补 README、把站点部署到可访问平台供评审实测、补录 demo、并补跑 PR9/PR10 欠下的大审查。
+
+**改了什么 / 经过**：
+1. **README 重写**：从脚手架默认页改成完整中文 README——它能做什么 / 本地克隆即跑（Node≥20.9、`cp .env.example .env.local` 配 key、`npm run dev`）/ 在线部署到 Render / 架构与设计文档索引（SCHEMA/PROJECT/DEVLOG）/ agent 四能力 / Schema 三核心 / 内置示例表 / 技术栈 / 项目结构。顶部放**在线体验**与 **Demo 视频**链接于显眼处。
+2. **serverless 超时修复**：`app/api/convert/route.ts` 加 `maxDuration = 300`。转换是 1–3 分钟长流式，serverless 默认 10–15s 会中途掐断；Vercel 按套餐封顶（Hobby 60/Pro 300），常驻容器（Render `next start`）忽略此值、无单次时限。
+3. **部署到 Render**：选 Render 而非 Vercel 免费版——常驻容器无单次请求时限，红楼 22 场/网文 24 场都能跑完；Vercel 免费 60s 会超时（需 Pro 300s）。环境变量配 `LLM_*`。Auto-Deploy On Commit。
+4. **真示例补提交事故（重要教训）**：上线后线上 `/api/sample` 返回的仍是**旧占位示例**（红楼前三回/回响纪元/老站台）。一度误判为「Render 旧构建」，**用户直觉「改动没推上去」才是对的**——排查发现 **PR10b 当时只 commit 了新增的示例 txt，引用它们的 `manifest.ts`、中文数字排序修复、旧占位 txt 删除全留在工作区未提交**，main（及线上）一直是旧 manifest。补提交（PR #19）后 Render 80s 自动重建，线上翻新。**教训**：`git status` 必须在「声称完成」前确认干净；新增文件被 commit≠引用它的改动也被 commit。
+5. **线上端到端验证**：`/api/sample` 返回真实四体裁 ✅；在线 POST `/api/convert` 散文样本，SSE 四阶段 `stage_start/done` 全出、`final_result` 收尾，**Render 常驻容器跑完长流式不被掐** ✅。
+6. **运维提示（非代码）**：公开链接用的是用户自己的 LLM key——`storybible` 阶段出现过 **402 Insufficient Balance**（DeepSeek 余额耗尽），表现为「突然都不能跑」。修法纯账户侧（充值 / 换有余额的 key，改 Render env `LLM_*` 即可，OpenAI 兼容可换厂商）。评审窗口期后建议 Suspend 服务或轮换 key。
+
+**欠账大审查（覆盖 PR9+PR10+PR11，冷读 `git diff 1162e8d...HEAD`）**：
+- **逐文件冷读结论**：`/api/sample`（id 走 `sampleFileById` 精确查表、`path.join(cwd,"samples",file)`、未知 id→404，无路径穿越）、`/api/convert`（`MAX_NOVEL_CHARS=200_000` 体积闸 + `maxDuration`）、`manifest.ts`（精确匹配、`SAMPLE_METAS` 剥 `file` 不泄露）、`concatFiles.ts`（纯客户端、`CHAPTER_RE` 单字符类无回溯）、`orchestrator.ts`（Critic 抛错 `try/catch` 降级 needs_review 不中断、近重复只标不删）——**均无问题**。
+- **逮到 1 个真问题并修复（中危 ReDoS）**：`chunker.ts` 的 `CHAPTER_HEADING` 对每行运行，其惰性 `TITLE` 类 `[^标点]*?` 与结尾 `[ \t　]*$` 字符集**重叠**，构造单行「标记+非空白+海量全角空格+非空白」触发**二次回溯**，在服务端 `/api/convert` 上能把单线程 Node 卡死数十秒（DoS，且在 200k 输入闸内可达）。**修**：加 `MAX_HEADING_LINE=200` 行长闸——真实标题行天然很短，超长行直接跳过正则、当正文处理。+1 回归测试（12 万全角空格的恶意行，断言 <1000ms 完成且不被解析为标题）。
+- 门禁：`npm test` **289 passed | 3 skipped**（+1 ReDoS 回归）、`tsc --noEmit` exit 0。

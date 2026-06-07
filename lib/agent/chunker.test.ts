@@ -168,6 +168,19 @@ describe("chunkNovel · chapters", () => {
     expect(chapters[0].marker).toBe("第一回");
     expect(chapters[0].body).toContain("第四回中既将");
   });
+
+  it("does not catastrophically backtrack on a crafted heading-like long line (ReDoS guard)", () => {
+    // PR11 big-review: `CHAPTER_HEADING`'s lazy TITLE class overlaps the trailing
+    // whitespace, so `第1章x` + a huge full-width-space run + `y` backtracks
+    // quadratically. The MAX_HEADING_LINE guard skips the regex on long lines, so
+    // this returns fast AND the line is treated as body, not a heading.
+    const evil = "第1章x" + "　".repeat(120_000) + "y";
+    const t0 = Date.now();
+    const { chapters } = chunkNovel(evil);
+    expect(Date.now() - t0).toBeLessThan(1000); // would be seconds+ without the guard
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].marker).toBe(""); // not parsed as a heading
+  });
 });
 
 describe("splitScenes · scene candidates", () => {

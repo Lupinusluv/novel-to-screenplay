@@ -185,7 +185,7 @@ scenes:
   **实跑修复**：用户跑真实文件 `人生何处不青山.txt`（无章回散文）暴露**早存的 Critic 脆性**——chunker 正确切成 9 真实场景后，DeepSeek 偶发返回缺 `suggestion` 的 critique，`critiqueScene` 按设计抛错但 orchestrator 未包裹 → 异常杀掉整条 run。修：`processCandidate` 两处 critique 调用包 try/catch，Critic 抛错降级为 `needs_review` + 继续（不动 critic.ts 契约）。**真浏览器 E2E 实跑过**（playwright + 真 DeepSeek ≈105s：9 场景全出、章号对、无截断、导出就位）。
   **275 passed | 3 skipped**（+19，既有 256 零回归）；`tsc`/`lint` 干净。spec 见 `docs/superpowers/specs/2026-06-07-pr9-chunker-robustness-design.md`；实现 + 实跑修复纪实见 `docs/DEVLOG.md` PR9 节。
 - [x] **PR10 前端打磨 MVP** — ✅ **已并入 main**（分支 `pr10-frontend-polish`）。用户时间压力下收成 MVP：① **视觉升级**（渐变标题/徽章/示例卡片墙/indigo 主色/hover+focus 态，去简陋感）② **多 `.txt` 上传**（`lib/client/concatFiles.ts` 自然序拼接，`第2章<第10章`）③ **多体裁示例集框架**（`lib/samples/manifest.ts` + `GET /api/sample`→manifest、`?id=`→正文，id 查表解析无路径穿越）+ **四体裁真实语料**（PR10b：古典章回=红楼第36–38回 / 现代网文=人生何处不青山+轮回秋日的信 / 散文=鲁迅《从百草园到三味书屋》/ 意识流=《追忆似水年华》；GBK→UTF-8 转码；散文/古典章回/意识流真 DeepSeek+playwright E2E 全绿，网文 chunker 验证+PR9 已实跑半截）+ **多选 txt 中文数字回目自然序修复**（`第三十六/七/八回` 正确排序）+ `docs/DEMO-SCRIPT.md` 演讲稿。**288 passed | 3 skipped**、`tsc` 干净。**用户拍板：先合并、PR10 大审查移到转 public 前（PR11）一起跑。** 设计阶段未走完 gstack spec（时间压力下中途叫停，转 superpowers TDD）。**Defer**：YAML 块间空行可读性；武侠等其余体裁。实现纪实见 `docs/DEVLOG.md` PR10 + PR10b 节。
-- [ ] **PR11 README + demo 收尾 + 大审查** — README（架构图/跑法/Schema 设计论证索引/agent 四能力）+ 录屏 demo（脚本见 `docs/DEMO-SCRIPT.md`/§11）。**并入此前 defer 的 PR10 大审查**：转 public 前跑 `/code-review`+`/security-review` 冷读 `git diff 1162e8d...<head>`（覆盖 **PR9+PR10+PR11**，含 chunker/示例 route 解析未信任输入）。**最后做**。
+- [x] **PR11 README + 部署上线 + demo 收尾 + 欠账大审查** — ✅ **已并入 main**。① README 重写（能做什么/本地跑法/Render 部署/Schema 论证索引/agent 四能力/示例表）② `app/api/convert` 加 `maxDuration=300`（serverless 超时修复）③ 部署到 **Render**（常驻容器无单次时限，红楼/网文长流式跑得完；线上 `/api/sample` 四体裁 + `/api/convert` 端到端 `final_result` 实跑验证）④ **真示例补提交事故修复**（PR #19：PR10b 的 manifest/中文数字排序/删旧 txt 一直没 commit，main 与线上停在旧占位；用户直觉对、一度误判 Render 旧构建）⑤ **欠账大审查**（冷读 `git diff 1162e8d...HEAD` 覆盖 PR9+PR10+PR11）：`/api/sample`·`/api/convert`·`manifest`·`concatFiles`·`orchestrator` 均无问题，**逮到并修复 1 个中危 ReDoS**——`chunker.ts` `CHAPTER_HEADING` 惰性 TITLE 与结尾空白字符集重叠致二次回溯，加 `MAX_HEADING_LINE=200` 行长闸 + 回归测试。门禁 `npm test` **289 passed | 3 skipped**、`tsc` exit 0。**运维提示**：公开链接烧用户自己的 key，余额耗尽会 402（换/充 key 即可），评审后建议 Suspend 或轮换。**剩**：demo 视频链接待用户提供后填入 README 顶部。实现纪实见 `docs/DEVLOG.md` PR11 节。
 
 ---
 
@@ -247,20 +247,19 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-07）**：**PR1–PR10 全部已并入 main**。PR10（前端打磨 MVP）加了多体裁示例选择器（古典章回=红楼36-38回 / 现代网文 / 散文=百草园 / 意识流=追忆，四模块真实语料）+ 多 `.txt` 自然序上传（含中文数字回目）+ 视觉升级；演讲稿在 `docs/DEMO-SCRIPT.md`。**PR11（README + demo 收尾 + 欠账的大审查）是下一个**——基于新 main 开 `pr11-readme-demo`。**欠账提醒**：PR10 大审查（`/code-review`+`/security-review` 冷读 `1162e8d...head` 覆盖 PR9+PR10+PR11）用户拍板移到转 public 前的 PR11 一起跑，别忘了。
-> **现在全栈端到端跑通、可编辑可溯源、且能吃脏输入**：小说 → chunk（**回目鲁棒识别 + 长度兜底 + 近重复检测**）→ StoryBible → 逐场景(convert+critic+自纠重试，**Critic 失败降级 needs_review 不中断整条 run**) → 汇编 → `POST /api/convert` SSE → **前端实时时间线 + 卡片(id 已解析中文名)/YAML + 溯源高亮原文 + YAML 回灌编辑 + 导出**。
-> main 上 `npm test` = **275 passed | 3 skipped**（PR9 累计 +19；既有零回归），`tsc` 干净，`lint` 干净；PR9 期间 **真浏览器 E2E 实跑过**（用户真实文件 `人生何处不青山.txt` 12.3k 字无章回散文 → 9 场景全出、章号正确、无截断、导出就位，真 DeepSeek ≈105s）。
-> **PR9 收尾要点**：① 回目/长度/近重复三块切分鲁棒性已落地（详见 §6 PR9 行 + DEVLOG PR9 节）；② 实跑逼出并修掉了**下游 Critic 的健壮性盲点**（Critic 抛错原会杀掉整条 run，已改为降级 needs_review）；③ 这篇文本 needs_review 偏多是「文本+模型」特性，用户拍板不再调 Critic 宽容度（留作可选优化）。
-> **下次大审查节点 = PR10**（锚 `1162e8d`，覆盖 PR9+PR10，含 PR9 解析未信任输入那部分）——PR9 用户拍板只跑了 codex 冷读，大审查并入 PR10。
+> **当前状态快照（2026-06-07）**：**PR1–PR11 全部已并入 main**（HEAD 含 PR #19 真示例补提交 + PR11 大审查 ReDoS 修复）。**项目功能层面已收尾**：全栈端到端跑通、可编辑可溯源、吃脏输入、四体裁真示例、多 txt 自然序上传、视觉打磨，**已部署到 Render 线上可访问**（https://novel-to-screenplay-gtoh.onrender.com）并端到端实跑验证。**唯一未尽事项**：① demo 视频链接待用户提供后填入 README 顶部（视频用户已录）；② 评审后按需 Suspend Render 服务 / 轮换 key。
+> **现在全栈端到端跑通、可编辑可溯源、且能吃脏输入**：小说 → chunk（**回目鲁棒识别 + 长度兜底 + 近重复检测 + ReDoS 行长闸**）→ StoryBible → 逐场景(convert+critic+自纠重试，**Critic 失败降级 needs_review 不中断整条 run**) → 汇编 → `POST /api/convert` SSE → **前端实时时间线 + 卡片(id 已解析中文名)/YAML + 溯源高亮原文 + YAML 回灌编辑 + 导出**。
+> main 上 `npm test` = **289 passed | 3 skipped**，`tsc` 干净，`lint` 干净；**线上 Render 端到端实跑验证过**（`/api/sample` 真实四体裁 + `/api/convert` SSE 四阶段 `final_result` 收尾，常驻容器跑完长流式不被掐）。
+> **PR11 收尾要点**：① README/部署/maxDuration 到位；② **真示例补提交事故**（PR10b 的 manifest/排序/删旧 txt 未 commit，线上停在旧占位——教训：声称完成前必查 `git status` 干净）；③ **欠账大审查已跑**（覆盖 PR9+PR10+PR11，逮到并修 1 个中危 ReDoS，详见下）；④ **运维**：公开链接烧用户 key，余额耗尽 storybible 阶段报 402（充/换 key 即可）。
+> **大审查结论（节点 = 锚 `1162e8d`，覆盖 PR9+PR10+PR11，已完成）**：`/api/sample`（allowlist 无穿越）·`/api/convert`（体积闸+maxDuration）·`manifest`·`concatFiles`·`orchestrator`（Critic 降级）均无问题；**`chunker.ts` `CHAPTER_HEADING` 中危 ReDoS 已修**（`MAX_HEADING_LINE=200` 行长闸 + 回归测试）。
 
-**接续步骤（PR11 待开工，PR1–PR10 已合并在 main）**：
-1. 读本文件（§6 路线图看 PR11 行 / §3 架构 / §4 角色分工 / §11 demo 脚本）+ `docs/DEVLOG.md`（**PR10 节 + PR9 节**）+ `docs/SCHEMA.md` + `docs/DEMO-SCRIPT.md`（演讲稿）。
-2. **`git checkout main && git pull --ff-only`，再 `git checkout -b pr11-readme-demo main`**——**别重做任何已完成的事**：PR1–PR10 全在 main。
-3. **PR11 内容**：README（架构图/跑法/Schema 设计论证索引/agent 四能力）+ demo 录屏收尾（链接放 README 显眼处，用户自录）。docs 为主、低风险。
-4. **PR11 跑欠账的大审查**：`/code-review`+`/security-review` 冷读 `git diff 1162e8d...<pr11-head>`（覆盖 **PR9+PR10+PR11**，含 chunker/示例 route 解析未信任输入），结论交用户、修完再合。这是转 public 前的最后一道关。
-5. **用户点头才 merge**。
-6. **前后端契约（备查，PR11 基本不动代码）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧（`lib/agent/events.ts`）；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。示例走 `GET /api/sample`（无 id 返 manifest、`?id=` 返正文；清单在 `lib/samples/manifest.ts`，加体裁=加一行+丢一个 `samples/*.txt`）。chunker 鲁棒（`lib/agent/chunker.ts`）、Critic 失败已降级不崩。Next 16 写前端前读 `node_modules/next/dist/docs/`。
-8. **YAML id 是设计而非 bug**（用户问过）：`scenes[].*_id` 是指向顶部 `characters:`/`locations:` 表的稳定引用，支撑跨章人物合并 + 引用完整性校验；卡片解析成中文名给人读、YAML 留 id 给机器。不要改成内嵌中文名。
+**接续步骤（功能已收尾，PR1–PR11 全在 main）**：
+1. 读本文件 + `docs/DEVLOG.md`（**PR11 节**）+ `docs/SCHEMA.md` + `docs/DEMO-SCRIPT.md`（演讲稿）。
+2. **剩余唯一代码/文档动作**：用户给出 demo 视频链接后，把 README 顶部 `Demo 视频：**<这里放 B 站/云盘链接>**` 替换为真链接（branch-per-PR，别直推 main）。
+3. **评审交付后**：按需在 Render 控制台 Suspend 服务或轮换 LLM key（公开链接长期挂着会被刷额度）。
+4. 若要继续加体裁：`samples/` 丢一个 `.txt` + `lib/samples/manifest.ts` 加一行即可。
+5. **前后端契约（备查）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧（`lib/agent/events.ts`）；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。示例走 `GET /api/sample`（无 id 返 manifest、`?id=` 返正文；清单在 `lib/samples/manifest.ts`，加体裁=加一行+丢一个 `samples/*.txt`）。chunker 鲁棒（`lib/agent/chunker.ts`，含 ReDoS 行长闸）、Critic 失败已降级不崩。Next 16 写前端前读 `node_modules/next/dist/docs/`。
+6. **YAML id 是设计而非 bug**（用户问过）：`scenes[].*_id` 是指向顶部 `characters:`/`locations:` 表的稳定引用，支撑跨章人物合并 + 引用完整性校验；卡片解析成中文名给人读、YAML 留 id 给机器。不要改成内嵌中文名。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
