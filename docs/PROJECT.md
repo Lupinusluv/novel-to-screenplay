@@ -175,8 +175,13 @@ scenes:
   测试栈：`@testing-library/react`+`jsdom`+`@vitejs/plugin-react`，vitest 用内置 `resolve.tsconfigPaths`（替掉 `vite-tsconfig-paths`）+ 手动 `afterEach(cleanup)`（globals 关）。
   设计走 gstack（spec `docs/superpowers/specs/2026-06-06-pr7-frontend-design.md`，codex 冷读 13 条 E1–E13 全落地）。**只读 + 导出**（编辑/溯源弹层/空错态打磨留 PR8）。
   **209 passed | 3 skipped**（+47，既有 162 不回归）；`tsc` 干净；`lint` 干净。**E11 真浏览器实跑**（Chrome dev server + playwright MCP）：选示例→转换，Network 确认 `GET /api/sample 200`+`POST /api/convert 200`(SSE)，时间线逐步点亮（场记✓→设定集✓→场景编剧 9/9→导演✓）、9 卡片流式出现、切 YAML（自然数序）、导出就位，真 DeepSeek ≈30s。**PR7 只走 A 档、不跑大审查。** 实现纪实见 `docs/DEVLOG.md` PR7 节。
-- [ ] **PR8 最后阶段打磨（溯源 + 编辑 + 空错态）** — 🚧 **开工中**（分支 `pr8-traceability-polish`，基于 main `5d726af`；首个 commit = PR7 已合并状态同步）。范围（2026-06-06 用户拍板，从原 PR8 拆出 demo 到 PR9）：① 场景溯源弹层/跳回原文（信任闭环，demo 第 5 步）；② **YAML 回灌编辑**（用户在 YAML 视图改 → 解析 + zod 校验 → 回灌状态；复用 `lib/schema/yaml.ts`+`screenplay.ts`，与「纯数据」架构最契合，demo 第 4 步）；③ 空/错状态视觉打磨。**下次大审查节点**（`/code-review`+`/security-review` 锚 `69ff533`，覆盖 PR7+PR8）。
-- [ ] **PR9 README + demo 脚本（收尾）** — README（架构图/跑法/Schema 设计论证索引/agent 四能力）+ 录屏 demo 脚本定稿（见 §11）。**最后做**；docs/脚本为主、低风险，只走 A 档轻量门禁。
+- [x] **PR8 最后阶段打磨（溯源 + 编辑 + 空错态）** — ✅ **已并入 main（#10，merge commit `1162e8d`）**（分支 `pr8-traceability-polish`，已删）。
+  ① 场景溯源弹层 `SourceModal`（`lib/client/locateExcerpt.ts` 三级回退定位 → `<mark>` 高亮原文，纯 React 文本节点禁 innerHTML，focus trap/Esc/aria）；② **YAML 回灌编辑** `lib/client/applyEdit.ts`（`fromYAML`+zod+id 唯一/≥1 场景/长度护栏 → `edited` overlay 驱动卡片+导出，断引用警示、错态保好态）；③ 空/错态打磨（空态引导卡、流式骨架、`busy` 防重复、错态「重试」跑失败快照、needs_review 展开）；④ A 档反馈快修（进度条做完收起、卡片 id→中文名+枚举译中）。
+  设计走 gstack（spec `docs/superpowers/specs/2026-06-07-pr8-traceability-edit-polish-design.md`，codex 冷读 20 条 E1–E20 全吸收）。**大审查已过**（`/code-review` 冷读 `69ff533...HEAD` 覆盖 PR7+PR8，4 finder 高 recall；安全面干净；修 6 条：重试用错文本/溯源 memo/Esc stopPropagation/YamlView re-seed/displayYaml memo/warning Map）。
+  **256 passed | 3 skipped**（+47 over PR7 的 209）；`tsc`/`lint` 干净；**真浏览器 E2E 实跑过**（溯源高亮真红楼原文 → 改 YAML 应用 → 卡片/导出同步 → 错态保好态 → Esc 还焦，导出 blob 实测含编辑后内容）。实现 + E2E + 大审查纪实见 `docs/DEVLOG.md` PR8 节。
+- [ ] **PR9 切分鲁棒性（后端 chunker，最高优先）** — ⏳ **下一个**（分支 `pr9-chunker-robustness`，基于 main `1162e8d`；首个 commit = PR8 已合并状态同步）。**起因**：用户实跑发现切分在脏输入/多版本/非标准回目下全面失守（导出 YAML 见：① 回目「《红楼梦》第三回…」带《》前缀未被识别 → 全篇当 1 章、`chapter` 全 1、标题被吞进 excerpt；② 多版本文本 → 近重复场景 1_1≈1_3；③ 现代散文无章回线索 → 整篇成 1 超大场景超 `SCENE_BODY_CAP=4000` → 诚实截断+needs_review）。**chunker 本身是「按位置保序」、不重排**（顺序问题源于输入物理序，非 bug）。范围：① **回目识别鲁棒化**（`《书名》第N回`/`Chapter N`/纯数字/卷·节/网文章节）；② **分体裁切分 + 长度兜底**（章回体 cue 保留 + 散文/网文按空行/长度切，超长段落按段/句再切 → 根治截断，`SCENE_BODY_CAP` 退化成真兜底）；③ **近重复检测**（高重叠候选合并/标记）；④ 顺序保持位置忠实（语义重排不做，文档写明）；⑤ 三体裁 fixtures（红楼章回/现代散文/网文短章）。纯 `lib/agent` 增量。**解析未信任输入 → 属安全敏感，至少跑 `/code-review`**。
+- [ ] **PR10 前端打磨（B 档）** — 视觉升级（排版/留白/配色/字体/动效/响应式，去「简陋感」）+ 多 `.txt` 上传（按文件名自然序拼接，章节排序）+ YAML 块间空行可读性。纯前端。
+- [ ] **PR11 README + demo 脚本（收尾）** — README（架构图/跑法/Schema 设计论证索引/agent 四能力）+ 录屏 demo 脚本定稿（见 §11）。**最后做**；docs/脚本为主、低风险，只走 A 档轻量门禁。
 
 ---
 
@@ -238,19 +243,21 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-06）**：**PR1–PR7 全部已并入 main**，main 在 **`5d726af`**（Merge PR #9）。**PR8（Agent 可视化深化 + 溯源 + 打磨）开工中**——分支 **`pr8-traceability-polish`**（基于新 main），本分支首个 commit = 本次「PR7 已合并」状态同步。
-> **现在是全栈端到端跑通**：小说 → chunk → StoryBible → 逐场景(convert+critic+自纠重试) → 汇编 → `POST /api/convert` SSE → **前端实时时间线 + 剧本卡片/YAML + 导出**。
-> main 上 `npm test` = **209 passed | 3 skipped**（PR7 +47 前端测，既有 162 不回归），`tsc` 干净，`lint` 干净；PR7 期间 **E11 真浏览器实跑过**（Chrome dev server + playwright MCP，时间线逐步点亮 + 卡片流式 + YAML + 导出，真 DeepSeek ≈30s）。
-> **PR8 是大审查节点**（锚 `69ff533`，覆盖 PR7+PR8），`pr create` 前必跑。
+> **当前状态快照（2026-06-07）**：**PR1–PR8 全部已并入 main**，main 在 **`1162e8d`**（Merge PR #10）。**PR9（切分鲁棒性·后端 chunker）是下一个、最高优先**——分支 **`pr9-chunker-robustness`**（基于 main `1162e8d`），本分支首个 commit = 本次「PR8 已合并」状态同步。
+> **现在是全栈端到端跑通且可编辑可溯源**：小说 → chunk → StoryBible → 逐场景(convert+critic+自纠重试) → 汇编 → `POST /api/convert` SSE → **前端实时时间线 + 卡片(id 已解析中文名)/YAML + 溯源高亮原文 + YAML 回灌编辑 + 导出**。
+> main 上 `npm test` = **256 passed | 3 skipped**（PR8 累计前端测；既有后端不回归），`tsc` 干净，`lint` 干净；PR8 期间 **真浏览器 E2E 实跑过**（溯源高亮真红楼原文 → 改 YAML 应用 → 卡片/导出同步 → 错态保好态 → Esc 还焦，真 DeepSeek ≈30s）。
+> **PR9 起因 = 用户实跑暴露切分缺陷**（详见 §6 PR9 行 + DEVLOG PR8 节末「用户实跑反馈」）：脏输入/多版本/非标准回目下切分失守（章号全 1、近重复场景、超长截断）。chunker 本身保序不重排，顺序问题源于输入物理序。
+> **下次大审查节点**：每 2 PR 一次，PR8 已审过；下次落在 PR10（锚 `1162e8d`，覆盖 PR9+PR10）。但 **PR9 解析未信任输入、属安全敏感，单独至少跑一次 `/code-review`**。
 
-**接续步骤（PR8 开工中，PR7 已合并在 main）**：
-1. 读本文件（§6 路线图看 PR8 行 / §3 架构 / §4 角色分工 / §11 demo 脚本）+ `docs/DEVLOG.md`（PR7 节：架构分层 + codex 13 条 + 测试栈踩坑）+ `docs/SCHEMA.md`。
-2. **`git checkout pr8-traceability-polish`**——**别重做任何已完成的事**：PR1–PR7 全在 main `5d726af`；本分支已落「PR7 已合并」状态同步 commit。
-3. **PR8 设计先行**：走 gstack（`/gstack-spec` + codex 冷读，不叠 superpowers brainstorming），把 PR8 范围拆成可执行 spec。
-4. **superpowers TDD 实现** PR8 范围（demo/README 已拆到 PR9）：场景溯源弹层/跳回原文、**YAML 回灌编辑**（改 YAML → 解析+zod 校验 → 回灌）、空/错状态视觉打磨（见 §6 PR8 行）。
-5. **PR8 是大审查节点**：`pr create` 前派 `/code-review`+`/security-review` 冷读 `git diff 69ff533...<pr8-head>`（覆盖 PR7+PR8），结论交用户。
+**接续步骤（PR9 待开工，PR1–PR8 已合并在 main `1162e8d`）**：
+1. 读本文件（§6 路线图看 PR9 行 / §3 架构 / §4 角色分工 / §11 demo 脚本）+ `docs/DEVLOG.md`（**PR8 节，尤其末尾「用户实跑反馈·A 档快修」+ 大审查**）+ `docs/SCHEMA.md`。
+2. **`git checkout pr9-chunker-robustness`**——**别重做任何已完成的事**：PR1–PR8 全在 main `1162e8d`；本分支已落「PR8 已合并」状态同步 commit。
+3. **PR9 设计先行**：走 gstack（`/gstack-spec` + codex 冷读，不叠 superpowers brainstorming），把 §6 PR9 五点范围（回目识别鲁棒化 / 分体裁切分+长度兜底 / 近重复检测 / 保序 / 三体裁 fixtures）拆成可执行 spec。**关键现状**：`lib/agent/chunker.ts`（`CHAPTER_HEADING` 正则要 `^…第N回`，`《红楼梦》第三回` 因《》前缀失配；`splitScenes` 三启发式：分隔行/≥2 空行/转场 cue，无长度兜底）、`sceneConverter.ts`（`SCENE_BODY_CAP=4000` 超限截断+needs_review）。
+4. **superpowers TDD 实现** PR9 范围（纯 `lib/agent`，顺带根治 #4 截断）。
+5. **PR9 是安全敏感（解析外部输入）**：`pr create` 前至少跑 `/code-review` 冷读 `git diff 1162e8d...<pr9-head>`，结论交用户。
 6. **用户点头才 merge**。
-7. **前端契约（备查）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧，事件类型见 `lib/agent/events.ts`；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。内置示例走 `GET /api/sample`。Next 16 写前端前读 `node_modules/next/dist/docs/`。
+7. **前端契约（备查，PR9 不动前端）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧，事件类型见 `lib/agent/events.ts`；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。内置示例走 `GET /api/sample`。Next 16 写前端前读 `node_modules/next/dist/docs/`。
+8. **YAML id 是设计而非 bug**（用户问过）：`scenes[].*_id` 是指向顶部 `characters:`/`locations:` 表的稳定引用，支撑跨章人物合并 + 引用完整性校验；卡片解析成中文名给人读、YAML 留 id 给机器。不要改成内嵌中文名。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
