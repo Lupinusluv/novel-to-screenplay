@@ -2,9 +2,9 @@
 
 把一部小说（≥3 章效果最佳）交给一支 **多 agent「AI 剧组」**，自动产出**结构化、可编辑、可溯源**的影视剧本初稿（YAML），全过程在前端**实时可见**。
 
-> 在线体验：**<这里放 Vercel 链接>**　|　Demo 视频：**<这里放 B 站/云盘链接>**
+> 在线体验：**<这里放 Render 链接，形如 https://novel-to-screenplay.onrender.com>**　|　Demo 视频：**<这里放 B 站/云盘链接>**
 >
-> 不想部署也能看：上面的在线地址点开就能用，内置多体裁示例，零配置。
+> 不想部署也能看：上面的在线地址点开就能用，内置多体裁示例，零配置。首次访问若是免费实例可能有 ~40s 冷启动，请稍候。
 
 ---
 
@@ -58,18 +58,26 @@ npx tsc --noEmit    # 类型检查
 
 ---
 
-## 在线部署到 Vercel（让评审零配置实测）
+## 在线部署到 Render（让评审零配置实测）
+
+选 Render 是因为转换是 1–3 分钟的长流式任务（红楼 22 场、网文 24 场），Render 的常驻容器**没有单次请求时限**，四类示例都能跑完；而 serverless（如 Vercel 免费版 60s）会把长样本中途切断。
 
 1. 把仓库推到 GitHub（已是）。
-2. 登录 [vercel.com](https://vercel.com) → **Add New → Project** → 导入本仓库。
-3. Framework 自动识别为 Next.js，**Build/Output 全部用默认**，无需改。
-4. 在 **Environment Variables** 里加（这一步对应本地的 `.env.local`）：
+2. 登录 [render.com](https://render.com) → **New → Web Service** → 连接本仓库。
+3. 配置：
+   - **Runtime**：Node
+   - **Build Command**：`npm install && npm run build`
+   - **Start Command**：`npm start`
+   - **Instance Type**：Free 即可
+4. 在 **Environment Variables** 里加（对应本地的 `.env.local`）：
    - `LLM_BASE_URL` = `https://api.deepseek.com/v1`
    - `LLM_API_KEY` = `sk-你的key`
    - `LLM_MODEL` = `deepseek-chat`
-5. **Deploy** → 拿到 `https://<项目名>.vercel.app` 链接，填回本 README 顶部。
+5. **Create Web Service** → 拿到 `https://<服务名>.onrender.com`，填回本 README 顶部。
 
-> 注意：公开链接用的是**你的 key**，任何拿到链接的人点「转换」都会消耗你的额度。评审窗口期内风险低；若担心，给评审后用 Vercel 控制台暂停部署或轮换 key 即可。
+> - **冷启动**：免费实例闲置约 15 分钟后休眠，评审第一次打开需等 ~40s 唤醒，之后正常。给评审前自己先点一下预热。
+> - **安全**：公开链接用的是**你的 key**，谁拿到链接点转换都消耗你的额度。评审窗口期短风险低；给完链接后可在 Render 控制台 Suspend 服务或轮换 key。
+> - 也可用 **Vercel**，但需 **Pro 套餐（300s）** 才能跑完红楼/网文（免费 60s 会超时）。`maxDuration` 已在 `app/api/convert/route.ts` 设为 300，Pro 自动生效。
 
 ---
 
