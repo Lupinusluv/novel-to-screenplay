@@ -42,8 +42,9 @@ export interface PipelineState {
   warnings: SceneWarning[];
   screenplay?: Screenplay;
   yaml?: string;
-  /** The fatal error, if any. */
-  error?: { stage: Stage; sceneId?: string; message: string };
+  /** The fatal error, if any. `code` mirrors the event's structured failure
+   *  class (e.g. "insufficient_balance") when present. */
+  error?: { stage: Stage; sceneId?: string; message: string; code?: string };
 }
 
 export function initialPipelineState(): PipelineState {
@@ -152,6 +153,7 @@ export function pipelineReducer(
           stage: event.stage,
           ...(event.sceneId != null ? { sceneId: event.sceneId } : {}),
           message: event.message,
+          ...(event.code != null ? { code: event.code } : {}),
         },
       };
     }
