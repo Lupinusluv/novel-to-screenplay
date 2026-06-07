@@ -26,7 +26,7 @@ import {
   type ConversionIssue,
   type SceneRevision,
 } from "./sceneConverter";
-import { critiqueScene } from "./critic";
+import { critiqueScene, type CritiqueResult } from "./critic";
 import { toYAML } from "../schema/yaml";
 import { eventToSSE } from "./sse";
 import type { Scene, Screenplay } from "../schema/screenplay";
@@ -264,7 +264,16 @@ async function processCandidate(
 
   const seen = new Set([sceneHash(scene)]);
   let ctries = 0;
-  let crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+  // The Critic is best-effort and throws on malformed model output by design
+  // (critic.ts). That throw must NOT abort the run: keep the converted scene,
+  // flag it for review, and move on (dogfood fix: 人生何处不青山.txt crashed a
+  // 9-scene run when one critique came back missing `suggestion`).
+  let crit: CritiqueResult;
+  try {
+    crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+  } catch {
+    return flagNearDuplicate({ ...scene, needs_review: true }, item.candidate);
+  }
   while (!crit.ok && ctries < budget) {
     const seed: SceneRevision = {
       critique: crit.issues.filter((i) => i.severity === "major").map((i) => i.suggestion),
@@ -278,7 +287,11 @@ async function processCandidate(
     if (seen.has(h)) break; // E5 oscillation → keep current best
     seen.add(h);
     scene = re.scene;
-    crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+    try {
+      crit = await critiqueScene(scene, item.candidate.text, bible, llm);
+    } catch {
+      return flagNearDuplicate({ ...scene, needs_review: true }, item.candidate);
+    }
     ctries++;
   }
   if (!crit.ok) scene = { ...scene, needs_review: true };

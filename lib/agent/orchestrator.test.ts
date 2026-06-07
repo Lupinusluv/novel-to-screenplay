@@ -142,6 +142,21 @@ describe("runPipeline (orchestrator: wiring + self-correction + events)", () => 
     expect(sp.scenes[1].needs_review).toBeFalsy();
   });
 
+  it("PR9b — a Critic failure degrades the scene to needs_review, never aborts the run", async () => {
+    // Dogfooding (人生何处不青山.txt) hit this: DeepSeek returned a critique with
+    // an issue missing `suggestion`, critiqueScene threw (by design), and the
+    // UNWRAPPED call propagated the throw — killing a 9-scene run after 8 had
+    // converted fine. The Critic is best-effort; its failure must not abort.
+    const { llm } = fakeLLM({
+      critique: () => {
+        throw new Error("LLM response was not parseable JSON");
+      },
+    });
+    const sp = await runPipeline(NOVEL, llm, {}); // critic on (default)
+    expect(sp.scenes).toHaveLength(2);
+    expect(sp.scenes.every((s) => s.needs_review === true)).toBe(true);
+  });
+
   it("T15 — emits stages in order with a per-scene progress counter", async () => {
     const events: PipelineEvent[] = [];
     const { llm } = fakeLLM();
