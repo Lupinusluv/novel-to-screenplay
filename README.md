@@ -54,7 +54,7 @@ npm run build && npm start
 
 ### 验证测试（不消耗 key，走 fixture）
 ```bash
-npm test            # vitest，302 passed | 3 skipped
+npm test            # vitest，303 passed | 3 skipped
 npx tsc --noEmit    # 类型检查
 ```
 

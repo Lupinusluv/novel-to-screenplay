@@ -408,6 +408,13 @@
 
 **踩坑（cause 链）**：storyBible/sceneConverter/critic 的 `chatJSON` 调用都把底层错误**重新包装**成 `new Error("...map failed: " + msg)`，丢了 `LLMError` 类型——首版测试里 `code` 一直 undefined。修：三处 wrap 加 `{ cause: err }`，`llmErrorCode` 走 cause 链（深度上限 10 防环）。这样 agent 包装不破坏结构化分类。
 
-**门禁**：`npm test` **302 passed | 3 skipped**（+13：client 6 / pipelineState 2 / orchestrator 2 / ConverterApp 2 ……实为 +13 含 classify 单测）、`tsc --noEmit` exit 0、`lint` 干净（仅既有 manifest 无关 warning）。TDD 每层先红（贴了 instanceof undefined / code undefined / 友好文案缺失的红）后绿。
+**门禁**：`npm test` **303 passed | 3 skipped**（+14：client 6 / pipelineState 2 / orchestrator 3 / ConverterApp 2 + classify 单测 + 大审查回归 1）、`tsc --noEmit` exit 0、`lint` 干净（仅既有 manifest 无关 warning）。TDD 每层先红（贴了 instanceof undefined / code undefined / 友好文案缺失的红）后绿。
+
+**正式大审查（冷读 `git diff 1162e8d..HEAD` 覆盖 PR9–PR12，2 个独立冷 reviewer + codex 设计冷读）**：
+- **逮到 1 个真 bug 并修（correctness，高）**：`pipelineToSSEStream` 的 `sawError` 对**任意** error 帧（含**非致命的 scene 级 warning**）置真，会**抑制**后面合成的致命帧（唯一带 `code` 的那条）。混合场景：某场景结构失败→占位 + scene 级 warning（置 `sawError`），另一场景随后 402 逃出 pool→runPipeline 重抛但未 emit→catch 里 `sawError` 已真→**合成帧被跳过**，前端既看不到友好 402、又因 scene 级 warning 非 terminal 而**永久卡在 in-flight**。原 PR12 测试只覆盖「全部场景都 402」漏了这个混合态。**修**：`sawError`→`sawFatalError`，只对致命 error（无 sceneId / 非 scenes 阶段，镜像 `isTerminal`）置真；scene 级 warning 不再抑制合成帧。+1 混合态回归测试（先红：402 被吞）。
+- **逮到 1 个健壮性硬化（中低）**：`classifyLLMErrorCode` 的 body 兜底 regex 原本喂**未截断**的 HTTP 错误体——恶意/超大 provider body 会把整串喂给正则（线性、非灾难性 ReDoS，但无界内存/扫描）。**修**：分类只看 `text.slice(0, 4096)` 前缀（对齐 PR9 `MAX_HEADING_LINE`、PR11 ReDoS 闸的既有模式）。
+- **冷读确认无问题（不改）**：`llmErrorCode` cause 链有 `depth<10` 防环；`runPool` 重写保持 index→slot 序（E5b）、首错重抛、消除 unhandled rejection；`isRetryable` 改动不误伤 transient（LLMError 只在终态非 transient 路径构造）；`code` 过 SSE 往返无损；外链 `rel="noopener noreferrer"` 已带（无反向 tabnabbing）；API key 仅在 Authorization header、友好 UI 不泄露密钥/路径；`{ cause }` 在 ES2017 target + esnext lib + Node 24 下运行正常。
+- **已知接受的低危**：402→insufficient_balance 的归一对「provider 用 402 表达非余额语义」偏粗——spec 已声明为 demo 友好权衡且 `LLMError` 保留原始 `status`，不改。
+- **注**：PR11 已对 PR9–PR11 做过一轮人工冷读（修了 chunker ReDoS）；本次为用户要求的 PR12 收尾正式复审，重点新代码（PR12）。**云端 ultra 大审查（`/code-review ultra`）为用户侧计费触发，需用户自行发起**——本次为本地 `/code-review`+`/security-review` 等价冷读。
 
 **demo 可讲的一句话**：「公开 demo 烧作者的 key，余额耗尽不再甩一脸 `402 Insufficient Balance`——而是把 provider 402 在 HTTP 层归一成结构化错误码，前端按码显示『演示站额度已用尽，本地部署配自己的 key 即可』；且这类全局资源失败会从任意 agent 阶段干净地中止整条流水线，绝不产出一部全是占位场景的假剧本。」

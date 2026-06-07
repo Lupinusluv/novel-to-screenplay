@@ -225,9 +225,14 @@ export function createLLMClient(config: LLMConfig): LLMClient {
           // Non-transient (or last-attempt transient) HTTP failure. Keep the
           // `LLM request failed <status>:` message format (isRetryable's legacy
           // regex still matches) AND tag it structurally so the UI can react.
+          // Classify on a bounded prefix — a pathological/huge provider body must
+          // not feed an unbounded string to the regex (cf. PR9/PR11 length gates).
           throw new LLMError(
             `LLM request failed ${res.status}: ${truncate(text, 200)}`,
-            { status: res.status, code: classifyLLMErrorCode(res.status, text) },
+            {
+              status: res.status,
+              code: classifyLLMErrorCode(res.status, text.slice(0, 4096)),
+            },
           );
         }
 

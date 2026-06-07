@@ -449,7 +449,7 @@ export function pipelineToSSEStream(
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false;
-      let sawError = false;
+      let sawFatalError = false;
       const safeEnqueue = (s: string) => {
         if (closed) return;
         try {
@@ -462,14 +462,24 @@ export function pipelineToSSEStream(
         await runPipeline(novelText, llm, {
           ...options,
           onEvent: (e) => {
-            if (e.type === "error") sawError = true;
+            // Only a FATAL error (no sceneId / non-scenes stage) means runPipeline
+            // already reported the terminal failure. A scene-level warning must
+            // NOT suppress the synthesized fatal frame below — otherwise a 402
+            // that escapes the pool *after* an unrelated scene placeholder would
+            // never carry its `code` to the UI (review catch).
+            if (
+              e.type === "error" &&
+              !(e.stage === "scenes" && e.sceneId != null)
+            ) {
+              sawFatalError = true;
+            }
             safeEnqueue(eventToSSE(e));
           },
         });
       } catch (err) {
         // FIX #4: runPipeline already emits a stage-specific error event before
         // throwing; only synthesize one here if it didn't (avoid duplicate frames).
-        if (!sawError) {
+        if (!sawFatalError) {
           safeEnqueue(
             eventToSSE({
               type: "error",

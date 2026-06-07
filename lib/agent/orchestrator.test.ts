@@ -443,4 +443,31 @@ describe("PR12 — insufficient_balance escalates to a fatal error carrying the 
     // It must abort, not finish with a screenplay full of placeholders.
     expect(text).not.toContain("event: final_result\n");
   });
+
+  it("mixed: a scene-stage 402 still surfaces the friendly code even after another scene emitted a (non-fatal) placeholder warning", async () => {
+    // Review catch: a scene-level warning must NOT suppress the synthesized fatal
+    // frame that carries the code. Chapter 1 fails structurally → placeholder +
+    // scene-level warning; chapter 2 then 402s → escapes the pool. The terminal
+    // SSE must still carry insufficient_balance (and never a final_result).
+    const llm: LLMClient = {
+      chat: async () => "",
+      chatJSON: async <T = unknown>(messages: ChatMessage[]) => {
+        const t = messages.map((m) => m.content).join("\n");
+        if (t.includes("逐章实体表") || t.includes("本章原文")) {
+          return MAP_ENTITIES as T;
+        }
+        if (t.includes("丁来了")) throw balance402(); // chapter 2 scene → 402
+        return { bad: "structural garbage" } as T; // chapter 1 scene → malformed
+      },
+    };
+    const text = await readAll(
+      pipelineToSSEStream(NOVEL, llm, {
+        critic: false,
+        retryBudget: 0,
+        concurrency: 1, // chapter 1 (warning) completes before chapter 2 (402)
+      }),
+    );
+    expect(text).toContain("insufficient_balance");
+    expect(text).not.toContain("event: final_result\n");
+  });
 });
