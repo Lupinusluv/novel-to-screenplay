@@ -186,6 +186,13 @@ scenes:
   **275 passed | 3 skipped**（+19，既有 256 零回归）；`tsc`/`lint` 干净。spec 见 `docs/superpowers/specs/2026-06-07-pr9-chunker-robustness-design.md`；实现 + 实跑修复纪实见 `docs/DEVLOG.md` PR9 节。
 - [x] **PR10 前端打磨 MVP** — ✅ **已并入 main**（分支 `pr10-frontend-polish`）。用户时间压力下收成 MVP：① **视觉升级**（渐变标题/徽章/示例卡片墙/indigo 主色/hover+focus 态，去简陋感）② **多 `.txt` 上传**（`lib/client/concatFiles.ts` 自然序拼接，`第2章<第10章`）③ **多体裁示例集框架**（`lib/samples/manifest.ts` + `GET /api/sample`→manifest、`?id=`→正文，id 查表解析无路径穿越）+ **四体裁真实语料**（PR10b：古典章回=红楼第36–38回 / 现代网文=人生何处不青山+轮回秋日的信 / 散文=鲁迅《从百草园到三味书屋》/ 意识流=《追忆似水年华》；GBK→UTF-8 转码；散文/古典章回/意识流真 DeepSeek+playwright E2E 全绿，网文 chunker 验证+PR9 已实跑半截）+ **多选 txt 中文数字回目自然序修复**（`第三十六/七/八回` 正确排序）+ `docs/DEMO-SCRIPT.md` 演讲稿。**288 passed | 3 skipped**、`tsc` 干净。**用户拍板：先合并、PR10 大审查移到转 public 前（PR11）一起跑。** 设计阶段未走完 gstack spec（时间压力下中途叫停，转 superpowers TDD）。**Defer**：YAML 块间空行可读性；武侠等其余体裁。实现纪实见 `docs/DEVLOG.md` PR10 + PR10b 节。
 - [x] **PR11 README + 部署上线 + demo 收尾 + 欠账大审查** — ✅ **已并入 main**。① README 重写（能做什么/本地跑法/Render 部署/Schema 论证索引/agent 四能力/示例表）② `app/api/convert` 加 `maxDuration=300`（serverless 超时修复）③ 部署到 **Render**（常驻容器无单次时限，红楼/网文长流式跑得完；线上 `/api/sample` 四体裁 + `/api/convert` 端到端 `final_result` 实跑验证）④ **真示例补提交事故修复**（PR #19：PR10b 的 manifest/中文数字排序/删旧 txt 一直没 commit，main 与线上停在旧占位；用户直觉对、一度误判 Render 旧构建）⑤ **欠账大审查**（冷读 `git diff 1162e8d...HEAD` 覆盖 PR9+PR10+PR11）：`/api/sample`·`/api/convert`·`manifest`·`concatFiles`·`orchestrator` 均无问题，**逮到并修复 1 个中危 ReDoS**——`chunker.ts` `CHAPTER_HEADING` 惰性 TITLE 与结尾空白字符集重叠致二次回溯，加 `MAX_HEADING_LINE=200` 行长闸 + 回归测试。门禁 `npm test` **289 passed | 3 skipped**、`tsc` exit 0。**运维提示**：公开链接烧用户自己的 key，余额耗尽会 402（换/充 key 即可），评审后建议 Suspend 或轮换。⑥ **demo 视频已录并填入 README 顶部**（B 站 BV1ySEb6TEuC）。实现纪实见 `docs/DEVLOG.md` PR11 节。
+- [ ] **PR12 402 友好降级 + 本地部署引导 + 正式大审查（下一个，用户 /clear 后接续）** — 用户拍板的收尾 PR。基于新 main 开 `pr12-graceful-402`。三块：
+  1. **402 余额耗尽前端友好提示**：公开 Render 站点用的是作者自己的 LLM key，余额烧完后转换会失败。当前前端只把原始报文 `转换失败（storybible）：LLM request failed 402: {"error":{"message":"Insufficient Balance"...}}` 直接抛给用户，难懂。**改成友好引导**：识别 402 / "Insufficient Balance" 后展示「**作者的 API 额度已用尽。本站仅供演示浏览；如需实际体验「转换」，请克隆仓库本地部署并配置你自己的 API key（见 README「快速开始」）。**」并给一个跳 README/GitHub 的链接。
+     - **实现锚点**：错误经 SSE `error` 事件（`stage:"storybible"`，原始 message 来自 LLM provider）→ `lib/client/pipelineState.ts` reducer → `app/components/ConverterApp.tsx:~156` 渲染 `转换失败（{stage}）：{message}`。检测可在 ① 客户端展示层做 message 模式匹配（`402`/`Insufficient Balance`/`余额`），或 ② 更稳：在 `lib/llm/client.ts`/`orchestrator` 把 provider 的 402 归一成一个**结构化错误码**（如 `code:"insufficient_balance"`）再 emit，前端按 code 显示文案（推荐，不靠脆弱的字符串匹配）。设计阶段走 gstack spec 定夺。
+     - 注意 E10 client 边界：`lib/client/*` 只 `import type`，文案/链接常量别从 `lib/agent/*` import。
+  2. **README 本地部署引导补强**：README「快速开始（本地克隆即跑）」已有 `git clone`→`npm install`→`cp .env.example .env.local` 配 key→`npm run dev` 的步骤；本 PR **确认/打磨**这段，使其与上面前端提示的措辞对得上（前端说「见 README」，README 要一眼能找到「自己配 API key」那段）。必要时在前端提示里直接给可点的 GitHub 仓库链接。
+  3. **正式大审查**（用户要求最后再走一遍）：`/code-review`+`/security-review` 冷读 `git diff 1162e8d...<pr12-head>`（覆盖 **PR9+PR10+PR11+PR12**）。注：PR11 已做过一轮**人工**冷读并修了 1 个中危 ReDoS（见 PR11 节），本次是用户要的**正式云端**复审，锚点不变仍 `1162e8d`。结论交用户、修完再合。
+  - 门禁照旧：TDD 先红、`npm test`+`npx tsc --noEmit` 贴原始输出、更新 DEVLOG、用户点头才 merge、branch-per-PR（doc 同步随 PR 合，不直推 main）。
 
 ---
 
@@ -247,18 +254,23 @@ commit message 结尾附：`Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.c
 
 ## 10. /clear 后如何接续
 
-> **当前状态快照（2026-06-07）**：**PR1–PR11 全部已并入 main**（HEAD 含 PR #19 真示例补提交 + PR11 大审查 ReDoS 修复）。**项目功能层面已收尾**：全栈端到端跑通、可编辑可溯源、吃脏输入、四体裁真示例、多 txt 自然序上传、视觉打磨，**已部署到 Render 线上可访问**（https://novel-to-screenplay-gtoh.onrender.com）并端到端实跑验证。**收尾完成**：demo 视频已录并填入 README 顶部（B 站 BV1ySEb6TEuC）。**唯一待办**：评审交付后按需 Suspend Render 服务 / 轮换 key（公开链接烧用户自己的 key）。
+> **当前状态快照（2026-06-07，用户 /clear 前）**：**PR1–PR11 全部已并入 main**（HEAD=`eb76faa`，含 PR #19 真示例补提交 + PR #20 大审查 ReDoS 修复 + PR #21 demo 链接）。**功能 + 部署 + demo 全收尾**：全栈端到端跑通、可编辑可溯源、吃脏输入、四体裁真示例、多 txt 自然序上传、视觉打磨；**已上线 Render**（https://novel-to-screenplay-gtoh.onrender.com，端到端实跑验证）；demo 已录并填入 README（B 站 BV1ySEb6TEuC）；**用户已给 DeepSeek 充值**（402 当时是余额耗尽）。
+> **下一个 = PR12（用户 /clear 前拍板，见 §6 PR12 行）**：① **402 余额耗尽 → 前端友好提示**（识别 Insufficient Balance，告诉用户「作者额度已用尽，请克隆本地部署配自己的 key」）② **README 本地部署引导补强**（与前端提示措辞对齐）③ **正式大审查**（用户要的云端 `/code-review`+`/security-review`，锚 `1162e8d` 覆盖 PR9–PR12；PR11 已做过人工冷读修了 1 个 ReDoS）。基于新 main 开 `pr12-graceful-402`。**别重做 PR1–PR11**（全在 main）。
 > **现在全栈端到端跑通、可编辑可溯源、且能吃脏输入**：小说 → chunk（**回目鲁棒识别 + 长度兜底 + 近重复检测 + ReDoS 行长闸**）→ StoryBible → 逐场景(convert+critic+自纠重试，**Critic 失败降级 needs_review 不中断整条 run**) → 汇编 → `POST /api/convert` SSE → **前端实时时间线 + 卡片(id 已解析中文名)/YAML + 溯源高亮原文 + YAML 回灌编辑 + 导出**。
 > main 上 `npm test` = **289 passed | 3 skipped**，`tsc` 干净，`lint` 干净；**线上 Render 端到端实跑验证过**（`/api/sample` 真实四体裁 + `/api/convert` SSE 四阶段 `final_result` 收尾，常驻容器跑完长流式不被掐）。
 > **PR11 收尾要点**：① README/部署/maxDuration 到位；② **真示例补提交事故**（PR10b 的 manifest/排序/删旧 txt 未 commit，线上停在旧占位——教训：声称完成前必查 `git status` 干净）；③ **欠账大审查已跑**（覆盖 PR9+PR10+PR11，逮到并修 1 个中危 ReDoS，详见下）；④ **运维**：公开链接烧用户 key，余额耗尽 storybible 阶段报 402（充/换 key 即可）。
 > **大审查结论（节点 = 锚 `1162e8d`，覆盖 PR9+PR10+PR11，已完成）**：`/api/sample`（allowlist 无穿越）·`/api/convert`（体积闸+maxDuration）·`manifest`·`concatFiles`·`orchestrator`（Critic 降级）均无问题；**`chunker.ts` `CHAPTER_HEADING` 中危 ReDoS 已修**（`MAX_HEADING_LINE=200` 行长闸 + 回归测试）。
 
-**接续步骤（功能已收尾，PR1–PR11 全在 main）**：
-1. 读本文件 + `docs/DEVLOG.md`（**PR11 节**）+ `docs/SCHEMA.md` + `docs/DEMO-SCRIPT.md`（演讲稿）。
-2. **评审交付后**：按需在 Render 控制台 Suspend 服务或轮换 LLM key（公开链接长期挂着会被刷额度）。
-3. 若要继续加体裁：`samples/` 丢一个 `.txt` + `lib/samples/manifest.ts` 加一行即可。
-4. **前后端契约（备查）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧（`lib/agent/events.ts`）；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。示例走 `GET /api/sample`（无 id 返 manifest、`?id=` 返正文；清单在 `lib/samples/manifest.ts`，加体裁=加一行+丢一个 `samples/*.txt`）。chunker 鲁棒（`lib/agent/chunker.ts`，含 ReDoS 行长闸）、Critic 失败已降级不崩。Next 16 写前端前读 `node_modules/next/dist/docs/`。
-5. **YAML id 是设计而非 bug**（用户问过）：`scenes[].*_id` 是指向顶部 `characters:`/`locations:` 表的稳定引用，支撑跨章人物合并 + 引用完整性校验；卡片解析成中文名给人读、YAML 留 id 给机器。不要改成内嵌中文名。
+**接续步骤（PR12 待开工，PR1–PR11 全在 main）**：
+1. 读本文件（**§6 PR12 行 = 完整任务清单与实现锚点** + §3 架构 + §4 角色分工）+ `docs/DEVLOG.md`（**PR11 节**）+ `docs/SCHEMA.md`。
+2. **`git checkout main && git pull --ff-only`，再 `git checkout -b pr12-graceful-402 main`**——别重做 PR1–PR11。
+3. **PR12 设计先行**：走 gstack `/gstack-spec` + codex 冷读（不叠 superpowers brainstorming），重点定夺 402 检测放哪（推荐：在 `lib/llm/client.ts`/`orchestrator` 把 provider 402 归一成结构化错误码 `insufficient_balance` 再 emit，前端按 code 显示文案，而非脆弱的字符串匹配）。
+4. **superpowers TDD 实现** → 三块（前端友好提示 / README 引导 / 正式大审查），细节见 §6 PR12。
+5. **PR12 跑正式大审查**：`/code-review`+`/security-review` 冷读 `git diff 1162e8d...<pr12-head>`（覆盖 PR9–PR12），结论交用户、修完再合。**用户点头才 merge**。
+6. **评审/答辩交付后**（运维，非代码）：Render 控制台 Suspend 服务或轮换 LLM key（公开链接长期挂着会被刷额度——「轮换」= 作废旧 key 换新 key，已向用户解释过）。
+7. 若要继续加体裁：`samples/` 丢一个 `.txt` + `lib/samples/manifest.ts` 加一行即可。
+8. **前后端契约（备查）**：`POST /api/convert` body `{novel, options?}` → SSE typed 帧（`lib/agent/events.ts`）；前端消费链 = `sseClient.runConversion` → `pipelineReducer` → `ConverterApp`。示例走 `GET /api/sample`（无 id 返 manifest、`?id=` 返正文；清单在 `lib/samples/manifest.ts`，加体裁=加一行+丢一个 `samples/*.txt`）。chunker 鲁棒（`lib/agent/chunker.ts`，含 ReDoS 行长闸）、Critic 失败已降级不崩。Next 16 写前端前读 `node_modules/next/dist/docs/`。
+9. **YAML id 是设计而非 bug**（用户问过）：`scenes[].*_id` 是指向顶部 `characters:`/`locations:` 表的稳定引用，支撑跨章人物合并 + 引用完整性校验；卡片解析成中文名给人读、YAML 留 id 给机器。不要改成内嵌中文名。
 
 **架构/规划用 gstack、具体开发用 superpowers**（AGENTS.md 约定）。gstack 子技能现已全部注册可用
 （`/gstack-plan-eng-review`、`/gstack-spec`、`/gstack-autoplan`…，带 `gstack-` 前缀），codex 已装并鉴权可做 outside-voice。
