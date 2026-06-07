@@ -326,3 +326,17 @@
 **demo 可讲一句**：把脏粘贴（带书名号回目、多版本重复、整篇无章回的现代散文）喂进去，章号不再全 1、超长不再被截、重复段被标出待人工确认——确定性 chunker 的鲁棒性是 agent 流水线可信的地基。
 
 门禁：`npm test` = **274 passed | 3 skipped**（+18 测；既有 256 零回归）｜`tsc` exit 0｜`lint` 0 warning。TDD 每循环先红：回目 5 红、长度兜底 4 红、近重复 2 红、orchestrator 1 红，均贴过原始输出。
+
+### PR9 用户实跑反馈·Critic 崩溃修复（2026-06-07，用户跑真实文件 `人生何处不青山.txt`）
+
+**症状**：前端「转换失败（chunk）：转换中断：未收到最终结果」。用 playwright 真浏览器 + 直连 API 复现后定位：**根因不是 chunker**——chunker 把这篇无章回的现代散文（12.3k 字）正确切成 9 个长度适中场景（max 1497 ≤ 1500，无截断），PR9 本身工作正常。真正的锅是**早就存在的 Critic 脆性**：DeepSeek 对这篇对白/歌词密集文本偶发返回缺 `suggestion` 的 critique，`critiqueScene` 按设计抛错，但 `orchestrator` **没包裹该调用** → 异常冒泡杀掉整条 9 场景 run（已转换的 8 场全丢）。PR9 把散文从「1 个被截的超大场景」修成「9 个真实场景」，于是 Critic 被调 9 次、必中这个脆性——红楼示例只生成少量规整场景所以从没触发。
+
+**修复**（`orchestrator.ts`，TDD 先红后绿）：`processCandidate` 两处 `critiqueScene` 调用包 `try/catch`，Critic 抛错时**保留已转换场景 + 打 `needs_review` + 继续**，绝不中断整条 run（best-effort 边界，正是 `critic.ts` 注释里「orchestrator decides how to react」原本该做、却漏做的）。不动 `critic.ts` 抛错契约（T10b/T10c 仍绿）。
+
+**真浏览器端到端验证**（playwright 驱动 + 真 DeepSeek ≈105s）：4 阶段全 ✅、9 张卡全出、`final_result` 正常、导出就位；Critic 失败的 7/9 场景诚实标 `needs_review`（场景本身转换是好的、可编辑可导出，只是没被 Critic 背书）而非崩溃。
+
+**决策（用户拍板）**：Critic 解析的更宽容化（丢畸形 issue 而非整条报废，可减少误标 needs_review）**不做**——崩溃已修、run 能跑完即止，保持 critic.ts 契约不动、PR9 收口最轻。needs_review 偏多是「这篇文本 + 这个模型」的特性，留作后续可选优化。
+
+**demo 可讲一句**：真实脏文件逼出的不是切分 bug 而是下游 Critic 的健壮性盲点——确定性 chunker 一变强，就把 LLM agent 的脆弱处顶到了台面上；防御性边界（一个 agent 失败不拖垮整条流水线）才是 agentic 系统能上真实输入的关键。
+
+门禁（含本修复）：`npm test` = **275 passed | 3 skipped**（+1）｜`tsc` exit 0｜`lint` 0 warning。
